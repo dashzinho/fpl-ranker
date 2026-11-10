@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPL Rankings</title>
+<style>
+:root{
+  --bg:#0b0b1a; --bg2:#10102a; --panel:#15152f; --panel2:#1c1c3b; --line:#272750; --text:#ecebff; --muted:#9a98c4;
+  --accent:#00ff87; --accent-ink:#06250f; --violet:#b06cff; --gold:#ffd24a; --green:#2bd48e; --red:#ff5d73; --amber:#ffb454; --blue:#4da3ff;
+  --shadow:0 10px 30px rgba(0,0,0,.35); --r:16px;
+  --d1:#23c97f; --d2:#86d96a; --d3:#e8cd4a; --d4:#ff9a4d; --d5:#ff5d73; --dtxt:#0b1220;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f1f0fb; --bg2:#e9e8f7; --panel:#ffffff; --panel2:#f5f4fd; --line:#dedcf2; --text:#1d1646; --muted:#675f98;
+    --accent:#0aa35c; --accent-ink:#fff; --violet:#7a3fe0; --gold:#b98600; --green:#0f9d6e; --red:#d62f4f; --amber:#c87500; --blue:#1d6fd6;
+    --shadow:0 8px 24px rgba(40,30,110,.10);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f1f0fb; --bg2:#e9e8f7; --panel:#ffffff; --panel2:#f5f4fd; --line:#dedcf2; --text:#1d1646; --muted:#675f98;
+  --accent:#0aa35c; --accent-ink:#fff; --violet:#7a3fe0; --gold:#b98600; --green:#0f9d6e; --red:#d62f4f; --amber:#c87500; --blue:#1d6fd6;
+  --shadow:0 8px 24px rgba(40,30,110,.10);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1100px 520px at 85% -10%, color-mix(in srgb,var(--violet) 18%,transparent), transparent 60%),var(--bg);
+  color:var(--text);font-family:Inter,"Segoe UI Variable","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.4;min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+.num{font-variant-numeric:tabular-nums}
+.top{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--bg2);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--accent),#6a2cff);display:grid;place-items:center;font-weight:900;color:#0b0b1a;font-size:13px}
+.brand h1{font-size:16px;margin:0;font-weight:800}
+.brand p{margin:0;color:var(--muted);font-size:12px}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{background:none;border:0;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;color:var(--muted)}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.stats{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 12px;min-width:92px}
+.stat b{display:block;font-size:15px}
+.stat span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.themebtn{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:40px;height:40px;display:grid;place-items:center}
+.wrap{max-width:1500px;margin:0 auto;padding:18px 24px 50px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.panel-title{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 12px;font-weight:800}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.good{color:var(--green)}.tag.bad{color:var(--red)}.tag.warn{color:var(--amber)}.tag.vio{color:var(--violet)}
+.d-up{color:var(--green)}.d-dn{color:var(--red)}
+.controls{display:flex;flex-wrap:wrap;gap:14px 22px;padding:16px 18px;align-items:flex-end;margin-bottom:14px}
+.c{min-width:150px}
+.c label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px;gap:10px}
+.c label b{color:var(--text)}
+.c input[type=range]{width:100%;accent-color:var(--accent)}
+select,input[type=search]{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit}
+.chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);padding:6px 0;cursor:pointer}
+.chk input{accent-color:var(--accent);width:16px;height:16px}
+.posbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.pill{background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:7px 16px;font-weight:700;font-size:13px;color:var(--muted)}
+.pill.on{background:var(--violet);border-color:var(--violet);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:relative;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:800;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none}
+th.r,td.r{text-align:right}
+th.on{color:var(--accent)}
+td{padding:9px 8px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);vertical-align:middle}
+tr.row{cursor:pointer}
+tr.row:hover td{background:color-mix(in srgb,var(--violet) 8%,transparent)}
+tr.xrow td{background:var(--panel2);padding:16px}
+.rk{color:var(--muted);font-weight:800;width:34px}
+.pn{font-weight:800}
+.tm{display:inline-block;min-width:34px;text-align:center;font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.scorebar{display:flex;align-items:center;gap:8px;min-width:110px}
+.scorebar i{display:block;height:7px;border-radius:99px;background:linear-gradient(90deg,var(--violet),var(--accent))}
+.scorebar b{min-width:30px;text-align:right}
+.strip{display:flex;gap:3px;flex-wrap:nowrap}
+.fc{display:flex;flex-direction:column;gap:2px}
+.fx{min-width:42px;text-align:center;font-size:10.5px;font-weight:800;padding:4px 3px;border-radius:6px;color:var(--dtxt);line-height:1.1}
+.fx small{display:block;font-weight:600;opacity:.8;font-size:9px}
+.fx.d1{background:var(--d1)}.fx.d2{background:var(--d2)}.fx.d3{background:var(--d3)}.fx.d4{background:var(--d4)}.fx.d5{background:var(--d5)}
+.fx.blank{background:var(--panel2);color:var(--muted);border:1px dashed var(--line)}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+.ovc{padding:16px}
+.ovr{display:grid;grid-template-columns:22px 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.ovr:last-child{border-bottom:0}
+.ovr .strip{grid-column:2 / -1}
+.big{font-size:20px;font-weight:900}
+.xgrid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1.3fr) minmax(220px,.9fr);gap:22px}
+@media (max-width:1000px){.xgrid{grid-template-columns:1fr}}
+.stack{display:flex;height:12px;border-radius:99px;overflow:hidden;background:var(--line);margin:8px 0 10px}
+.stack i{display:block;height:100%}
+.leg{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11.5px;color:var(--muted)}
+.leg span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:var(--c);vertical-align:-1px}
+.spark{display:flex;align-items:flex-end;gap:3px;height:56px}
+.spark i{display:block;width:14px;border-radius:3px 3px 0 0;background:var(--violet);min-height:2px;position:relative}
+.spark i.z{background:var(--line)}
+.mini th,.mini td{padding:5px 6px;font-size:12px;cursor:default}
+.note{color:var(--muted);font-size:12px;margin:10px 4px 0}
+.empty{padding:36px;text-align:center;color:var(--muted)}
+.section{padding:18px}
+.tcell{min-width:46px}
+.rankchg{font-weight:800}
+.sqline{display:grid;grid-template-columns:40px 1fr auto auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.sqline:last-child{border-bottom:0}
+.hide{display:none !important}
+.foot{text-align:center;color:var(--muted);font-size:11.5px;padding:0 0 30px}
+.more{display:block;margin:12px auto 0;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 20px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><div class="logo">FPL</div><div><h1>FPL Rankings</h1><p id="sub"></p></div></div>
+  <div class="seg" id="tabs"><button data-t="ov">Overview</button><button data-t="rk">Rankings</button><button data-t="tm">Teams &amp; fixtures</button><button data-t="sq">Best squad</button><button data-t="my">My team</button></div>
+  <div class="stats" id="stats"></div>
+  <button class="themebtn" id="theme" aria-label="Toggle theme">◐</button>
+</header>
+<div class="wrap">
+  <div class="card controls" id="controls">
+    <div class="c"><label>Look-ahead <b id="v-h" class="num"></b></label><input type="range" id="h" min="1" max="8" step="1"></div>
+    <div class="c"><label>Weight: outlook (xPts) <b id="v-wo" class="num"></b></label><input type="range" id="wo" min="0" max="100" step="5"></div>
+    <div class="c"><label>Weight: season performance <b id="v-wp" class="num"></b></label><input type="range" id="wp" min="0" max="100" step="5"></div>
+    <div class="c"><label>Weight: value (xPts / £) <b id="v-wv" class="num"></b></label><input type="range" id="wv" min="0" max="100" step="5"></div>
+    <div class="c rk-only"><label>Max price <b id="v-pr" class="num"></b></label><input type="range" id="pr" min="4" max="15.5" step="0.5"></div>
+    <div class="c rk-only"><label>Team</label><select id="team"></select></div>
+    <div class="c rk-only"><label>Search</label><input type="search" id="q" placeholder="Player name"></div>
+    <div class="c rk-only">
+      <label class="chk"><input type="checkbox" id="avail"> Hide injured / doubtful</label>
+      <label class="chk"><input type="checkbox" id="diff"> Differentials only (&lt;10% owned)</label>
+      <label class="chk"><input type="checkbox" id="reg"> Regular players only</label>
+    </div>
+  </div>
+  <div id="view"></div>
+</div>
+<div class="foot" id="foot"></div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const POS = {1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD'};
+const TEAM = Object.fromEntries(D.teams.map(t => [t.id, t]));
+const PL = Object.fromEntries(D.players.map(p => [p.id, p]));
+const gbp = v => '£' + v.toFixed(1) + 'm';
+const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+const GW = D.meta.gws;
+const DEF = {tab: 'ov', h: D.meta.horizon, wo: D.weights.outlook, wp: D.weights.perf, wv: D.weights.value, pos: 0, pr: 15.5, team: 0, q: '', avail: false, diff: false, reg: true, sort: 'score', dir: -1, shown: 50, sqh: 5};
+let S = JSON.parse(JSON.stringify(DEF));
+try { Object.assign(S, JSON.parse(localStorage.getItem('fplboard1') || '{}')); } catch (e) {}
+const save = () => { try { localStorage.setItem('fplboard1', JSON.stringify(S)); } catch (e) {} };
+const open = new Set();
+
+/* ---------- model helpers ---------- */
+const horizonGW = () => GW.slice(0, S.h);
+const xpOf = (p, h = S.h) => { const g = GW.slice(0, h); let s = 0; p.fx.forEach(f => { if (g.includes(f[0])) s += f[3]; }); return s; };
+const diffIdx = p => p.p <= 2 ? 14 : p.p === 3 ? 15 : 13;           // GK/DEF: defensive ease, MID: overall, FWD: attacking
+function pctRank(vals, mask) {
+  const el = vals.filter((v, i) => mask[i]).sort((a, b) => a - b), n = el.length;
+  return vals.map((v, i) => { if (!mask[i] || n < 2) return mask[i] ? 50 : 0; let lo = 0, hi = n; while (lo < hi) { const m = (lo + hi) >> 1; if (el[m] < v) lo = m + 1; else hi = m; } return 100 * lo / (n - 1); });
+}
+let SC = {};
+function computeScores() {
+  SC = {};
+  [1, 2, 3, 4].forEach(pt => {
+    const g = D.players.filter(p => p.p === pt);
+    const mask = g.map(p => p.pm1 >= 0.25 && p.fx.length > 0 && p.st !== 'u' && p.st !== 'n');
+    const xp = g.map(p => xpOf(p)), val = g.map((p, i) => xp[i] / p.pr);
+    const po = pctRank(xp, mask), pv = pctRank(val, mask);
+    const ws = (S.wo + S.wp + S.wv) || 1;
+    g.forEach((p, i) => { SC[p.id] = {xp: xp[i], val: val[i], po: po[i], pv: pv[i], reg: mask[i],
+      score: mask[i] ? (S.wo * po[i] + S.wp * p.perf + S.wv * pv[i]) / ws : 0}; });
+  });
+}
+function strip(p, n = S.h) {
+  const gws = GW.slice(0, n), di = diffIdx(p);
+  return '<div class="strip">' + gws.map(gw => {
+    const fs = p.fx.filter(f => f[0] === gw);
+    if (!fs.length) {
+      const has = D.grid[p.t].some(f => f[0] === gw);
+      return `<div class="fx blank">${has ? '·' : '–'}<small>GW${gw}</small></div>`;
+    }
+    return `<div class="fc">${fs.map(f => `<div class="fx d${f[di]}" title="${esc(TEAM[f[1]].name)} (${f[2] ? 'H' : 'A'}) · xPts ${f[3]} · xG for ${f[16]} / against ${f[17]}"><span>${esc(TEAM[f[1]].short)}</span><small>${f[2] ? 'H' : 'A'} · ${f[3].toFixed(1)}</small></div>`).join('')}</div>`;
+  }).join('') + '</div>';
+}
+const newsTag = p => p.st === 'a' && !p.news ? '' : `<span class="tag ${p.st === 'u' || p.st === 'n' || p.chance === 0 ? 'bad' : 'warn'}" title="${esc(p.news)}">${p.chance == null ? (p.st === 'a' ? '' : p.st.toUpperCase()) : p.chance + '%'}${p.news ? ' ⚑' : ''}</span>`;
+
+/* ---------- views ---------- */
+function rowHTML(p, i) {
+  const s = SC[p.id], isOpen = open.has(p.id);
+  let h = `<tr class="row" data-id="${p.id}"><td class="rk num">${i}</td>
+    <td><span class="tm">${esc(TEAM[p.t].short)}</span><span class="pn">${esc(p.n)}</span> ${newsTag(p)} ${p.pen === 1 ? '<span class="tag vio" title="Penalty taker">PEN</span>' : ''}</td>
+    <td>${POS[p.p]}</td><td class="r num">${gbp(p.pr)}</td><td class="r num">${f1(p.own)}%</td><td class="r num">${f1(p.form)}</td>
+    <td class="r num">${p.pts}</td><td class="r num">${p.p90.toFixed(1)}</td>
+    <td class="r num"><b>${f1(s.xp)}</b></td><td class="r num">${s.val.toFixed(2)}</td><td class="r num">${Math.round(p.perf)}</td>
+    <td><div class="scorebar"><i style="width:${Math.max(2, s.score * 0.9)}px"></i><b class="num">${Math.round(s.score)}</b></div></td>
+    <td>${strip(p)}</td></tr>`;
+  if (isOpen) h += detailRow(p);
+  return h;
+}
+const COMP = [['Appearance', 4, '#8c98c0'], ['Goals', 5, '#2bd48e'], ['Assists', 6, '#4da3ff'], ['Clean sheet', 7, '#b06cff'], ['Goals conceded', 8, '#ff5d73'],
+  ['Saves', 9, '#ffd24a'], ['Bonus', 10, '#ff9a4d'], ['Def. contribution', 11, '#00c2c7'], ['Cards', 12, '#ff7aa2']];
+function detailRow(p) {
+  const g = GW.slice(0, S.h), fx = p.fx.filter(f => g.includes(f[0]));
+  const sums = COMP.map(c => fx.reduce((a, f) => a + f[c[1]], 0)), tot = sums.reduce((a, b) => a + Math.max(0, b), 0) || 1;
+  const maxPts = Math.max(8, ...p.hist);
+  return `<tr class="xrow"><td colspan="13"><div class="xgrid">
+    <div><h4 class="panel-title">Where the ${f1(xpOf(p))} projected points come from (next ${S.h} GW)</h4>
+      <div class="stack">${COMP.map((c, k) => sums[k] > 0 ? `<i style="width:${100 * sums[k] / tot}%;background:${c[2]}" title="${c[0]} ${f1(sums[k])}"></i>` : '').join('')}</div>
+      <div class="leg">${COMP.map((c, k) => `<span style="--c:${c[2]}">${c[0]} <b class="num">${sums[k] >= 0 ? '+' : ''}${f1(sums[k])}</b></span>`).join('')}</div>
+      <h4 class="panel-title" style="margin-top:18px">Last ${p.hist.length} gameweeks (points)</h4>
+      <div class="spark">${p.hist.map((v, k) => `<i class="${p.histm[k] === 0 ? 'z' : ''}" style="height:${Math.max(2, 56 * Math.max(0, v) / maxPts)}px" title="${v} pts · ${p.histm[k]}'"></i>`).join('')}</div>
+      <div class="note">Grey = didn't play. Minutes reliability: plays ${Math.round(p.pm1 * 100)}% of matches, 60+ in ${Math.round(p.p60 * 100)}%.</div></div>
+    <div><h4 class="panel-title">Fixture-by-fixture projection</h4>
+      <table class="mini"><thead><tr><th>GW</th><th>Opp</th><th class="r">xG for</th><th class="r">xG vs</th><th class="r">CS%</th><th class="r">xPts</th></tr></thead><tbody>
+      ${fx.map(f => `<tr><td>${f[0]}</td><td><span class="fx d${f[diffIdx(p)]}" style="display:inline-block;min-width:60px">${esc(TEAM[f[1]].short)} (${f[2] ? 'H' : 'A'})</span></td><td class="r num">${f[16]}</td><td class="r num">${f[17]}</td><td class="r num">${Math.round(100 * Math.exp(-f[17]))}%</td><td class="r num"><b>${f[3].toFixed(1)}</b></td></tr>`).join('') || '<tr><td colspan="6">No fixtures in range</td></tr>'}</tbody></table></div>
+    <div><h4 class="panel-title">Season profile</h4>
+      <div class="leg" style="display:grid;gap:6px">
+        <span style="--c:var(--violet)">Season points <b class="num">${p.pts}</b> · ${p.p90.toFixed(1)} per 90</span>
+        <span style="--c:var(--blue)">xGI per 90 <b class="num">${p.xgi90}</b></span>
+        <span style="--c:var(--gold)">Bonus per 90 <b class="num">${p.bn90}</b></span>
+        <span style="--c:#00c2c7">Defensive-contribution rate <b class="num">${Math.round(p.dcr * 100)}%</b></span>
+        <span style="--c:var(--green)">Season performance index <b class="num">${Math.round(p.perf)}</b></span>
+        <span style="--c:var(--muted)">FPL's own next-GW estimate <b class="num">${p.ep}</b></span></div>
+      ${p.news ? `<div class="note"><b>News:</b> ${esc(p.news)}</div>` : ''}</div></div></td></tr>`;
+}
+function filtered() {
+  let list = D.players.filter(p => S.pos === 0 || p.p === S.pos);
+  list = list.filter(p => p.pr <= S.pr && (!S.team || p.t === +S.team) && (!S.q || (p.full + ' ' + p.n).toLowerCase().includes(S.q.toLowerCase())));
+  if (S.avail) list = list.filter(p => p.st === 'a' && (p.chance == null || p.chance >= 75));
+  if (S.diff) list = list.filter(p => p.own < 10);
+  if (S.reg) list = list.filter(p => SC[p.id].reg);
+  const key = {score: p => SC[p.id].score, xp: p => SC[p.id].xp, val: p => SC[p.id].val, perf: p => p.perf, pr: p => p.pr, own: p => p.own, form: p => p.form, pts: p => p.pts, p90: p => p.p90};
+  const k = key[S.sort] || key.score;
+  return list.sort((a, b) => S.dir * (k(a) - k(b)) || SC[b.id].score - SC[a.id].score);
+}
+function viewRankings() {
+  const list = filtered(), n = Math.min(list.length, S.shown);
+  const cols = [['', null], ['Player', null], ['Pos', null], ['Price', 'pr'], ['Own', 'own'], ['Form', 'form'], ['Pts', 'pts'], ['Pts/90', 'p90'], [`xPts (${S.h})`, 'xp'], ['xPts/£', 'val'], ['Perf', 'perf'], ['Score', 'score'], ['Fixtures', null]];
+  return `<div class="posbar">${[[0, 'All'], [1, 'Goalkeepers'], [2, 'Defenders'], [3, 'Midfielders'], [4, 'Forwards']].map(([v, l]) => `<button class="pill ${S.pos === v ? 'on' : ''}" data-pos="${v}">${l}</button>`).join('')}
+    <span class="tag" style="align-self:center">${list.length} players</span></div>
+    <div class="card" style="overflow:auto"><table><thead><tr>${cols.map(([l, k], i) => `<th class="${k && i > 2 && i < 12 ? 'r' : ''} ${S.sort === k ? 'on' : ''}" ${k ? `data-sort="${k}"` : ''}>${l}${S.sort === k ? (S.dir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('')}</tr></thead>
+    <tbody>${list.slice(0, n).map((p, i) => rowHTML(p, i + 1)).join('')}</tbody></table></div>
+    ${n < list.length ? `<button class="more" id="more">Show more (${list.length - n} left)</button>` : ''}
+    <div class="note">Score blends: projected points over the look-ahead window (stats, bonus, minutes, fixtures via my team model), season performance index and points per £, as percentiles within each position. Change the weights above.</div>`;
+}
+function viewOverview() {
+  return '<div class="grid4">' + [1, 2, 3, 4].map(pt => {
+    const top = D.players.filter(p => p.p === pt && SC[p.id].reg).sort((a, b) => SC[b.id].score - SC[a.id].score).slice(0, 8);
+    return `<div class="card ovc"><h3 class="panel-title">${{1: 'Goalkeepers', 2: 'Defenders', 3: 'Midfielders', 4: 'Forwards'}[pt]} · top ${top.length}</h3>` +
+      top.map((p, i) => `<div class="ovr"><span class="rk num">${i + 1}</span><div><span class="tm">${esc(TEAM[p.t].short)}</span><span class="pn">${esc(p.n)}</span> ${newsTag(p)}
+        <div class="note" style="margin:2px 0 0">${gbp(p.pr)} · ${f1(p.own)}% · ${p.pts} pts</div></div>
+        <div class="num" style="text-align:right"><b class="big">${f1(SC[p.id].xp)}</b><div class="note" style="margin:0">xPts ${S.h}GW</div></div>
+        <div class="num" style="text-align:right"><b>${Math.round(SC[p.id].score)}</b><div class="note" style="margin:0">score</div></div>${strip(p, Math.min(S.h, 6))}</div>`).join('') + '</div>';
+  }).join('') + '</div><div class="note">Fixture colours: green = easy, red = hard, using my team-strength model (current results + xG, not FPL\'s static difficulty). GK/DEF cells are coloured by clean-sheet ease, MID by overall, FWD by chance of scoring. Small text = home/away and projected points for that player.</div>';
+}
+function viewTeams() {
+  const rows = [...D.teams].sort((a, b) => a.rank_now - b.rank_now);
+  const gws = GW.slice(0, Math.max(S.h, 5));
+  let h = `<div class="card" style="overflow:auto"><table><thead><tr><th>#</th><th>Team</th><th>Form</th><th class="r">W-D-L</th><th class="r">GF-GA</th><th class="r">xGF-xGA</th><th class="r">Attack ×</th><th class="r">Defence ×</th><th>Rating vs FPL prior</th>${gws.map(g => `<th class="tcell">GW${g}</th>`).join('')}</tr></thead><tbody>`;
+  rows.forEach(t => {
+    const ch = t.rank_prior - t.rank_now;
+    h += `<tr><td class="rk num">${t.rank_now}</td><td><span class="pn">${esc(t.name)}</span></td>
+      <td>${t.form.map(r => `<span class="tag ${r === 'W' ? 'good' : r === 'L' ? 'bad' : ''}" style="padding:1px 6px">${r}</span>`).join(' ')}</td>
+      <td class="r num">${t.w}-${t.d}-${t.l}</td><td class="r num">${t.gf}-${t.ga}</td><td class="r num">${t.xgf}-${t.xga}</td>
+      <td class="r num" title="Prior (preseason) ${t.att0}">${t.att.toFixed(2)}</td><td class="r num" title="Prior (preseason) ${t.def0} · lower = better">${t.def.toFixed(2)}</td>
+      <td><span class="rankchg ${ch > 0 ? 'd-up' : ch < 0 ? 'd-dn' : ''}">${ch > 0 ? '▲' + ch : ch < 0 ? '▼' + (-ch) : '='}</span> <span class="note" style="margin:0">was #${t.rank_prior}</span></td>
+      ${gws.map(g => { const fs = D.grid[t.id].filter(f => f[0] === g); return `<td>${fs.length ? fs.map(f => `<div class="fx d${f[8]}" title="${esc(TEAM[f[1]].name)} ${f[2] ? '(H)' : '(A)'} · xG for ${f[3]} / against ${f[4]} · CS ${Math.round(f[5] * 100)}%">${esc(TEAM[f[1]].short)}<small>${f[2] ? 'H' : 'A'}</small></div>`).join('') : '<div class="fx blank">–</div>'}</td>`; }).join('')}</tr>`;
+  });
+  return h + `</tbody></table></div><div class="note"><b>How difficulty is computed:</b> each team gets an attack and defence rating fitted on its actual results and xG (recent matches count more). FPL's own 2-5 strength is only a starting prior and fades as games are played (${D.meta.n_matches} matches so far), so a team expected to be weak that is performing well is no longer treated as an easy fixture. Cell colour compares expected goals for vs against in that match (green = favourable). "Attack ×" above 1 = scores more than average; "Defence ×" below 1 = concedes less. Home advantage fitted: ×${Math.exp(D.meta.home_adv).toFixed(2)}.</div>`;
+}
+function playerLine(id) { const p = PL[id]; return p ? `<div class="sqline"><span class="tag">${POS[p.p]}</span><div><span class="tm">${esc(TEAM[p.t].short)}</span><span class="pn">${esc(p.n)}</span> ${newsTag(p)}</div><span class="num">${gbp(p.pr)}</span><span class="num"><b>${f1(xpOf(p, S.sqh))}</b> xPts</span><span class="note" style="margin:0">${strip(p, Math.min(S.sqh, 5))}</span></div>` : ''; }
+function viewSquad() {
+  const sq = D.squads[String(S.sqh)];
+  let h = `<div class="posbar">${[1, 3, 5, 8].map(v => `<button class="pill ${S.sqh === v ? 'on' : ''}" data-sqh="${v}">Next ${v} GW</button>`).join('')}</div>`;
+  if (!sq || sq.error) return h + `<div class="card empty">Optimiser unavailable${sq ? ': ' + esc(sq.error) : ''}.</div>`;
+  const xi = sq.xi.map(id => PL[id]).sort((a, b) => a.p - b.p || xpOf(b, sq.horizon) - xpOf(a, sq.horizon));
+  const bench = sq.squad.filter(id => !sq.xi.includes(id)).map(id => PL[id]).sort((a, b) => a.p - b.p);
+  return h + `<div class="card section"><h3 class="panel-title">Optimal squad for the next ${sq.horizon} GW · £${sq.cost}m of £${D.meta.budget}m · XI projects <b class="num">${sq.xpts}</b> points</h3>
+    ${xi.map(p => playerLine(p.id)).join('')}<h3 class="panel-title" style="margin-top:18px">Bench</h3>${bench.map(p => playerLine(p.id)).join('')}</div>
+    <div class="note">Built from scratch (like a wildcard): picks the best 15 under the budget, max 3 per club, valid formation, maximising projected points of the XI (bench counts a little). It ignores your current team and transfer costs, so use "My team" for realistic moves.</div>`;
+}
+function viewMine() {
+  const m = D.mine;
+  if (!m) return `<div class="card empty">Add your FPL team ID to <b>prefs.json</b> (<code>"fpl_team_id": 123456</code>; it's the number in the URL on the Points page), then run the skill again.</div>`;
+  if (m.error) return `<div class="card empty">Couldn't load your team: ${esc(m.error)}</div>`;
+  const squad = m.picks.map(k => PL[k.id]).filter(Boolean);
+  const counts = {}; squad.forEach(p => counts[p.t] = (counts[p.t] || 0) + 1);
+  const owned = new Set(squad.map(p => p.id));
+  let h = `<div class="card section"><h3 class="panel-title">${esc(m.name || 'Your team')} · GW${m.gw} · bank £${m.bank.toFixed(1)}m · value £${m.value.toFixed(1)}m</h3>`;
+  squad.sort((a, b) => a.p - b.p).forEach(p => {
+    const cand = D.players.filter(q => q.p === p.p && !owned.has(q.id) && SC[q.id].reg && q.pr <= p.pr + m.bank && (q.t === p.t || (counts[q.t] || 0) < 3)
+      && (q.st === 'a' || q.st === 'd'))
+      .map(q => ({q, d: SC[q.id].xp - SC[p.id].xp})).sort((a, b) => b.d - a.d).slice(0, 3);
+    h += `<div class="sqline" style="grid-template-columns:40px 1.1fr auto 2fr"><span class="tag">${POS[p.p]}</span>
+      <div><span class="tm">${esc(TEAM[p.t].short)}</span><span class="pn">${esc(p.n)}</span> ${newsTag(p)}</div><span class="num"><b>${f1(SC[p.id].xp)}</b> xPts</span>
+      <div class="leg">${cand.map(c => `<span style="--c:${c.d > 1 ? 'var(--green)' : 'var(--muted)'}">${esc(c.q.n)} (${esc(TEAM[c.q.t].short)} ${gbp(c.q.pr)}) <b class="num ${c.d > 0 ? 'd-up' : 'd-dn'}">${c.d > 0 ? '+' : ''}${f1(c.d)}</b></span>`).join('')}</div></div>`;
+  });
+  return h + `</div><div class="note">Suggestions: best same-position swaps within your budget (player price + bank, using current prices since selling prices need a login) and the 3-per-club rule, ranked by extra projected points over the look-ahead window. A −4 hit needs more than ~4 extra points.</div>`;
+}
+function render() {
+  computeScores();
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
+  $('#controls').querySelectorAll('.rk-only').forEach(e => e.classList.toggle('hide', S.tab !== 'rk'));
+  $('#controls').classList.toggle('hide', S.tab === 'tm' || S.tab === 'my' && false);
+  $('#h').value = S.h; $('#wo').value = S.wo; $('#wp').value = S.wp; $('#wv').value = S.wv; $('#pr').value = S.pr;
+  $('#v-h').textContent = S.h + ' GW (' + GW[0] + '–' + GW[S.h - 1] + ')'; $('#v-wo').textContent = S.wo; $('#v-wp').textContent = S.wp; $('#v-wv').textContent = S.wv;
+  $('#v-pr').textContent = gbp(+S.pr);
+  $('#view').innerHTML = {ov: viewOverview, rk: viewRankings, tm: viewTeams, sq: viewSquad, my: viewMine}[S.tab]();
+  bind(); save();
+}
+function bind() {
+  document.querySelectorAll('tr.row').forEach(r => r.onclick = () => { const id = +r.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render(); });
+  document.querySelectorAll('[data-pos]').forEach(b => b.onclick = () => { S.pos = +b.dataset.pos; S.shown = 50; render(); });
+  document.querySelectorAll('[data-sqh]').forEach(b => b.onclick = () => { S.sqh = +b.dataset.sqh; render(); });
+  document.querySelectorAll('th[data-sort]').forEach(th => th.onclick = () => { const k = th.dataset.sort; if (S.sort === k) S.dir *= -1; else { S.sort = k; S.dir = k === 'pr' ? 1 : -1; } render(); });
+  const more = $('#more'); if (more) more.onclick = () => { S.shown += 50; render(); };
+}
+function init() {
+  $('#sub').textContent = `Season ${D.meta.season}/${String((+D.meta.season + 1) % 100).padStart(2, '0')} · after GW${D.meta.gw_now} · next GW${D.meta.gw_next}`;
+  $('#stats').innerHTML = [['Next gameweek', 'GW' + D.meta.gw_next], ['Players modelled', D.meta.n_players], ['Matches in model', D.meta.n_matches], ['Updated', D.meta.generated]]
+    .map(([k, v]) => `<div class="stat"><b class="num">${esc(v)}</b><span>${k}</span></div>`).join('');
+  $('#foot').textContent = 'Data: official FPL API · model: Poisson attack/defence ratings from results + xG with FPL strength as a fading prior; expected points from shrunk per-90 rates, minutes & availability. Projections, not guarantees.';
+  $('#team').innerHTML = '<option value="0">All teams</option>' + [...D.teams].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  $('#team').value = S.team; $('#q').value = S.q; $('#avail').checked = S.avail; $('#diff').checked = S.diff; $('#reg').checked = S.reg;
+  [['h', 'h'], ['wo', 'wo'], ['wp', 'wp'], ['wv', 'wv'], ['pr', 'pr']].forEach(([id, k]) => $('#' + id).oninput = e => { S[k] = +e.target.value; render(); });
+  $('#team').onchange = e => { S.team = +e.target.value; render(); };
+  $('#q').oninput = e => { S.q = e.target.value; render(); $('#q').focus(); };
+  [['avail', 'avail'], ['diff', 'diff'], ['reg', 'reg']].forEach(([id, k]) => $('#' + id).onchange = e => { S[k] = e.target.checked; render(); });
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; render(); });
+  $('#theme').onclick = () => { const r = document.documentElement; const dark = getComputedStyle(r).getPropertyValue('--bg').trim() === '#0b0b1a'; r.dataset.theme = dark ? 'light' : 'dark'; };
+  render();
+}
+init();
+</script>
+</body>
+</html>

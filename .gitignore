@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+# cached/parsed data and generated pages (rebuilt by the tool)
+data/
+output/
