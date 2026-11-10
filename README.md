@@ -52,3 +52,7 @@ output/         fpl_rankings.html (git-ignored, data embedded)
 - Data source: the official FPL API (unofficial but free, no key). Selling prices need a login, so "My team" uses current prices.
 - Projections, not guarantees. The weights are judgement calls and haven't been backtested yet (past-season data: [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League)).
 - Works as a Claude Code skill (`/fpl-rankings`), but needs no AI to run; a news layer could write adjustments to a file the model reads.
+
+## License
+
+Copyright (c) 2026 André Santos. All rights reserved. The code is public for viewing only; see [LICENSE](LICENSE). Contact me for permission to use it.
