@@ -332,5 +332,41 @@ function init() {
 }
 init();
 </script>
+<style>
+#upd{position:fixed;right:18px;bottom:18px;z-index:99;display:flex;flex-direction:column;align-items:flex-end;gap:8px;font:13px/1.35 system-ui,sans-serif}
+#upd button{display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;
+  background:var(--accent);color:var(--accent-ink,#fff);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#upd button:disabled{opacity:.75;cursor:progress}
+#upd .spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:upd-r .8s linear infinite;display:none}
+#upd.busy .spin{display:inline-block}
+@keyframes upd-r{to{transform:rotate(360deg)}}
+#upd .msg{max-width:340px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:8px 12px;box-shadow:0 8px 24px rgba(0,0,0,.3);display:none}
+#upd .msg.show{display:block}
+#upd .msg.err{border-color:var(--red);color:var(--red)}
+#upd .msg small{display:block;color:var(--muted);margin-top:2px}
+</style>
+<div id="upd" hidden><div class="msg" id="upd-msg"></div><button id="upd-btn" type="button"><span class="spin"></span><span id="upd-lbl">Update data</span></button></div>
+<script>
+(function(){
+  const box=document.getElementById('upd'), btn=document.getElementById('upd-btn'), msg=document.getElementById('upd-msg'), lbl=document.getElementById('upd-lbl');
+  if(location.protocol!=='http:'){ return; }                       // opened as a plain file: no server behind it
+  const show=(t,cls,sub)=>{msg.className='msg show'+(cls?' '+cls:'');msg.innerHTML=t+(sub?'<small>'+sub+'</small>':'');};
+  async function status(){ try{ const r=await fetch('/api/status',{cache:'no-store'}); return r.ok?await r.json():null; }catch(e){ return null; } }
+  async function poll(){
+    for(;;){ const s=await status(); if(!s){ show('Lost connection to the local server','err'); break; }
+      if(s.running){ lbl.textContent='Updating...'; show('Updating...','', (s.log[s.log.length-1]||'')); await new Promise(r=>setTimeout(r,1200)); continue; }
+      btn.disabled=false; box.classList.remove('busy'); lbl.textContent='Update data';
+      if(s.ok===false){ show('Update failed: '+s.message,'err'); }
+      else { show('Done: '+s.message,'','Reloading...'); setTimeout(()=>location.reload(),900); }
+      break; }
+  }
+  btn.onclick=async()=>{ btn.disabled=true; box.classList.add('busy'); lbl.textContent='Updating...'; show('Starting update...');
+    try{ const r=await fetch('/api/refresh',{method:'POST',headers:{'X-Requested-With':'update-button'}});
+      if(!r.ok && r.status!==409){ throw new Error('server said '+r.status); } poll(); }
+    catch(e){ btn.disabled=false; box.classList.remove('busy'); lbl.textContent='Update data'; show('Could not start the update: '+e.message,'err'); } };
+  status().then(s=>{ if(!s) return; box.hidden=false; if(s.running){ btn.disabled=true; box.classList.add('busy'); poll(); }
+    else if(s.built_at){ show('Last build: '+s.built_at); setTimeout(()=>{ if(!msg.classList.contains('err')) msg.classList.remove('show'); },3500); } });
+})();
+</script>
 </body>
 </html>

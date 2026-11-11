@@ -53,6 +53,10 @@ output/         fpl_rankings.html (git-ignored, data embedded)
 - Projections, not guarantees. The weights are judgement calls and haven't been backtested yet (past-season data: [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League)).
 - Works as a Claude Code skill (`/fpl-rankings`), but needs no AI to run; a news layer could write adjustments to a file the model reads.
 
+## One-click mode (Update button)
+
+Double-click `start.bat` (or run `python fpl.py --serve --open`). It serves the page on localhost and shows an **Update data** button in the corner: one click runs the same update flow and reloads the page, so you never need an editor or terminal. The server binds to 127.0.0.1 only and the page works read-only if opened directly as a file (the button only appears when served).
+
 ## License
 
 Copyright (c) 2026 André Santos. All rights reserved. The code is public for viewing only; see [LICENSE](LICENSE). Contact me for permission to use it.

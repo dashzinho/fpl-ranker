@@ -6,6 +6,7 @@
     python fpl.py --open     also open the page in your browser
     python fpl.py --force    re-fetch and rebuild even if nothing changed
     python fpl.py --offline  rebuild from cached data only (no network)
+    python fpl.py --serve --open   serve the page locally; its "Update" button re-runs this flow (see start.bat)
 
 Layout (created on first run):
     prefs.json     preferences (look-ahead, weights, budget, optional fpl_team_id, model knobs)
@@ -79,8 +80,22 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--open", action="store_true"); ap.add_argument("--force", action="store_true")
     ap.add_argument("--offline", action="store_true")
+    ap.add_argument("--now", action="store_true", help="skip the 'checked recently' shortcut (still skips the rebuild if nothing changed)")
+    ap.add_argument("--serve", action="store_true", help="serve the page locally with an Update button (use start.bat)")
+    ap.add_argument("--port", type=int, default=8801)
     a = ap.parse_args()
+    if a.serve:
+        import copy
+        b = copy.copy(a); b.open = False; b.serve = False
+        _run(b)                                   # make sure a page exists / is current
+        sys.path.insert(0, APP)
+        import server
+        server.serve(ROOT, HTML, [sys.executable, os.path.abspath(__file__), "--now"], a.port, a.open)
+        return
+    _run(a)
 
+
+def _run(a):
     state = load_state()
     first = not state.get("setup_done") or not os.path.exists(os.path.join(ROOT, "prefs.json"))
     if first: setup()
@@ -98,7 +113,7 @@ def main():
 
     # 1) very recent check -> no network at all
     recent = now - state.get("checked_ts", 0) < prefs["min_refresh_minutes"] * 60
-    if unchanged_code and recent and not a.force and not first:
+    if unchanged_code and recent and not a.force and not a.now and not first:
         return done(f"Up to date (checked {state.get('checked_at')}, GW{state.get('gw_next')} next). No network used.")
 
     # 2) fetch the two core files (or reuse cache when offline)
