@@ -13,6 +13,8 @@ from scipy.optimize import minimize, milp, LinearConstraint, Bounds
 
 POS_SHORT = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
 DC_THR = {2: 10, 3: 12, 4: 12}       # defensive-contribution thresholds (CBIT / CBIRT)
+# Premier League yellow-card suspensions: (yellow cards, reached by this league match -> ban length in matches)
+YC_RULES = ((5, 19, 1), (10, 32, 2))
 
 
 # ------------------------------------------------------------------ teams
@@ -135,6 +137,35 @@ def avail_factor(e, k):
     return f + (1 - f) * min(1.0, k / 3.0)
 
 
+def ban_probs(y, yc90, mm, seq):
+    """Chance of serving a yellow-card ban in each upcoming match of `seq` [(gw, fixture, availability), ...].
+    A player on y yellows who picks up enough more before the cut-off match misses the following match(es).
+    Per-match chance of a yellow = 1 - exp(-rate per 90 * expected 90s); at most one yellow per match.
+    Returns (ban chance per match, chance of being banned for at least one match inside the window)."""
+    n = len(seq); ban = [0.0] * n; risk = 0.0
+    for thr, last_gw, length in YC_RULES:
+        left = thr - y
+        if left <= 0 or left > 3:
+            continue
+        dist = [1.0] + [0.0] * (left - 1)             # P(extra yellows so far = index), absorbed once the ban is triggered
+        for k, (gw, _, av) in enumerate(seq):
+            if gw > last_gw:
+                break
+            q = 1.0 - math.exp(-yc90 * mm / 90.0 * av)
+            reach = dist[left - 1] * q
+            new = [0.0] * left
+            for i in range(left):
+                new[i] += dist[i] * (1 - q)
+                if i:
+                    new[i] += dist[i - 1] * q
+            dist = new
+            for j in range(k + 1, min(n, k + 1 + length)):
+                ban[j] += reach
+            if k + 1 < n:
+                risk += reach
+    return [min(1.0, b) for b in ban], min(1.0, risk)
+
+
 def position_priors(boot, hist):
     pri = {}
     team_of = {e["id"]: e for e in boot["elements"]}
@@ -249,10 +280,15 @@ def project(boot, fixtures, hist, model, prefs, horizon_gws=8):
         cs_pts = sc["clean_sheets"][POS_SHORT[pt]]
         gc_pts = sc["goals_conceded"][POS_SHORT[pt]]
         dc_pts = sc["defensive_contribution"][POS_SHORT[pt]]
-        fx = []
+        seq = []
         for k_gw, gw in enumerate(gws):
             av = avail_factor(e, k_gw)
             for x in [x for x in up[t] if x["gw"] == gw]:
+                seq.append((gw, x, av))
+        ban, ban_risk = ban_probs(e.get("yellow_cards", 0), pr["yc"], pr["mm"], seq)
+        fx = []
+        for si, (gw, x, av) in enumerate(seq):
+            if True:
                 sT = x["lt"] / ref_att[t]; sO = x["lo"] / ref_def[t]
                 exp90 = pr["mm"] / 90.0 * av
                 p60 = pr["p60"] * av; p1 = pr["pm1"] * av
@@ -266,10 +302,13 @@ def project(boot, fixtures, hist, model, prefs, horizon_gws=8):
                 bn = pr["bn"] * exp90 * (sT ** 0.4) * (sO ** -0.2) * sc["bonus"]
                 dc = dc_pts * pr["dc"] * p60 * (sO ** 0.2) if dc_pts else 0.0
                 cd = -pr["yc"] * exp90 * 1.0
-                tot = ap + gl + asst + cs + gc + sv + bn + dc + cd
+                raw = ap + gl + asst + cs + gc + sv + bn + dc + cd
+                tot = raw * (1.0 - ban[si])                      # banned matches score nothing
                 fx.append([gw, x["opp"], int(x["home"]), round(tot, 2), round(ap, 2), round(gl, 2), round(asst, 2), round(cs, 2),
                            round(gc, 2), round(sv, 2), round(bn, 2), round(dc, 2), round(cd, 2),
-                           x.get("dA", 3), x.get("dD", 3), x.get("dO", 3), round(x["lt"], 2), round(x["lo"], 2)])
+                           x.get("dA", 3), x.get("dD", 3), x.get("dO", 3), round(x["lt"], 2), round(x["lo"], 2),
+                           round(-ban[si] * raw, 2)])
+
         mins_played = e["minutes"]
         players.append({
             "id": e["id"], "n": e["web_name"], "full": f"{e['first_name']} {e['second_name']}", "t": t, "p": pt,
@@ -281,6 +320,12 @@ def project(boot, fixtures, hist, model, prefs, horizon_gws=8):
             "dcr": round(pr["dc"], 2), "p60": round(pr["p60"], 2), "pm1": round(pr["pm1"], 2),
             "news": e["news"] or "", "chance": e["chance_of_playing_next_round"], "st": e["status"],
             "pen": e.get("penalties_order"), "ep": float(e["ep_next"] or 0),
+            "yc": e.get("yellow_cards", 0), "ycleft": next((thr - e.get("yellow_cards", 0) for thr, last, _ in YC_RULES
+                                                           if 0 < thr - e.get("yellow_cards", 0) <= 2 and nxt <= last), None),
+            "ban": round(ban_risk, 2),
+            "tin": e.get("transfers_in_event", 0), "tout": e.get("transfers_out_event", 0), "cc": e.get("cost_change_event", 0),
+            "tp": round(100.0 * (e.get("transfers_in_event", 0) - e.get("transfers_out_event", 0))
+                        / max(1.0, float(e["selected_by_percent"] or 0) / 100.0 * boot.get("total_players", 1e7)), 2),
             "hist": [r["total_points"] for r in rows[-10:]], "histm": [r["minutes"] for r in rows[-10:]],
             "fx": fx,
         })
@@ -317,9 +362,10 @@ def perf_scores(players, min_minutes=270):
 
 
 # ------------------------------------------------------------------ squad optimiser
-def best_squad(players, horizon, budget=100.0, per_team=3):
-    """Maximise projected points of the starting XI (+ small bench weight) via integer programming."""
-    gws = sorted({fx[0] for p in players for fx in p["fx"]})[:horizon]
+def best_squad(players, horizon, budget=100.0, per_team=3, only_gws=None):
+    """Maximise projected points of the starting XI (+ small bench weight) via integer programming.
+    only_gws: optimise for exactly those gameweeks (e.g. one GW, for Free Hit) instead of the first `horizon`."""
+    gws = list(only_gws) if only_gws else sorted({fx[0] for p in players for fx in p["fx"]})[:horizon]
     pool = [p for p in players if p["fx"]]
     xp = np.array([sum(fx[3] for fx in p["fx"] if fx[0] in gws) for p in pool])
     n = len(pool)

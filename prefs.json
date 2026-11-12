@@ -7,10 +7,10 @@
     "value": 15
   },
   "budget": 100.0,
-  "fpl_team_id": null,
   "min_refresh_minutes": 30,
   "prior_strength": 5.0,
   "prior_scale": 0.1,
   "half_life_gw": 12,
-  "perf_min_minutes": 270
+  "perf_min_minutes": 270,
+  "fpl_team_id": null
 }
