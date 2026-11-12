@@ -53,6 +53,27 @@ def update_price_history(boot, keep_days=21):
             "since": h["snaps"][0]["ts"] if h["snaps"] else now}
 
 
+# ------------------------------------------------------------------ saving the Score weights as the default
+def save_weights(root, body):
+    """Validate {wo, wp, wv} (integers 0-100, not all zero) and merge them into prefs.local.json. Returns the saved dict."""
+    try:
+        w = {k: int(body[k]) for k in ("wo", "wp", "wv")}
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("weights must be three integers")
+    if any(v < 0 or v > 100 for v in w.values()) or sum(w.values()) == 0:
+        raise ValueError("weights must be between 0 and 100 and not all zero")
+    path = os.path.join(root, "prefs.local.json")
+    try:
+        cur = json.load(open(path, encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        cur = {}
+    cur["weights"] = {"outlook": w["wo"], "perf": w["wp"], "value": w["wv"]}
+    tmp = path + ".tmp"
+    json.dump(cur, open(tmp, "w", encoding="utf-8"), indent=2)
+    os.replace(tmp, path)
+    return cur["weights"]
+
+
 # ------------------------------------------------------------------ AI layer
 def export_context(data, boot, news):
     """Compact, self-contained JSON for the skill. Headlines are numbered so evidence can be checked."""

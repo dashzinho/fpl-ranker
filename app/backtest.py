@@ -1,42 +1,73 @@
-"""Backtest: how good are the projections, and which ranking weights would have picked better players?
+"""Backtest: how good are the projections, and which Score weights would have picked better players?
 
-For every already-played gameweek g (from GW4 on) the model is re-run using ONLY data from before g (team ratings
-fitted on matches before g, player histories cut at g-1, injury flags neutral because past news isn't stored),
-then compared with what actually happened. It reports:
+For every already-played gameweek g (from GW4 on) the model is re-run using ONLY data from before g: team ratings
+fitted on matches before g, player histories cut at g-1, and the season-performance inputs (minutes, points, xGI,
+bonus) recomputed from those same cut histories (nothing from the full season leaks in). Injury flags are neutral
+because past news is not stored. The real `perf_scores` and the page's own Score formula are used, so the weights
+tested are the weights the Rankings page applies.
 
-  * rank correlation + mean absolute error of the projected points for GW g (vs. simple baselines)
-  * a grid search over the three ranking weights (outlook / season performance / value): which mix would have picked
-    the players who scored most over the next 3 GWs
+Outputs (data/backtest.json, shown on the page's Model tab):
+  * accuracy of the single-gameweek projections by position, against two naive baselines
+  * for every weight mix (outlook/perf/value in steps of 5 summing to 100): the realised points over the next 3 GWs of
+    the top picks per position (the same picks the Overview shows), and the same per GBP million, each with a paired
+    standard error versus the best mix, so near-ties are visible instead of a single "optimal" crown
+  * stability: do the odd and even gameweeks rank the mixes alike? (low = the ranking is mostly noise)
 
-Caveat printed with the results: one season, a handful of gameweeks - treat as a sanity check, not proof.
-Run:  python fpl.py --backtest
+Honest limits: one season, few gameweeks, overlapping 3-GW windows (the standard errors are optimistic), prices are
+today's, and picking the best of ~200 mixes on this data flatters the winner. Re-run as the season progresses.
+Run:  python fpl.py --backtest      (the page also refreshes it automatically when a gameweek finishes)
 """
-import copy, itertools, os
+import copy, hashlib, json, os, time
 import numpy as np
 from scipy.stats import spearmanr
 import fpl_data as fd
 import fpl_model as fm
+from paths import DATA
 
+FILE = os.path.join(DATA, "backtest.json")
 TOPN = {1: 3, 2: 8, 3: 8, 4: 5}
+FIRST_GW = 4
+MIX = [(wo, wp, 100 - wo - wp) for wo in range(0, 101, 5) for wp in range(0, 101 - wo, 5)]
 
 
-def _pct(vals):
-    a = np.array(vals, float)
-    return a.argsort().argsort() / max(1, len(a) - 1) * 100
+def _pct(vals, mask):
+    """Same as the page's pctRank: percentile among eligible players, 0 for the rest."""
+    a = np.asarray(vals, float); m = np.asarray(mask, bool)
+    out = np.zeros(len(a))
+    el = np.sort(a[m]); n = len(el)
+    if n < 2:
+        out[m] = 50.0
+        return out
+    out[m] = 100.0 * np.searchsorted(el, a[m], side="left") / (n - 1)
+    return out
 
 
-def main(root, prefs):
-    boot, fixtures = fd.load_core()
-    hist = fd.load_histories(boot)
+def _cut_stats(p, rows):
+    """Season-to-date production recomputed from the cut history (the real model reads full-season boot values)."""
+    mins = sum(r["minutes"] for r in rows)
+    p["mins"] = mins
+    p["pts"] = sum(r["total_points"] for r in rows)
+    n90 = mins / 90.0
+    p["p90"] = p["pts"] / n90 if n90 else 0.0
+    p["xgi90"] = sum(float(r.get("expected_goal_involvements") or 0) for r in rows) / n90 if n90 else 0.0
+    p["bn90"] = sum(r.get("bonus") or 0 for r in rows) / n90 if n90 else 0.0
+
+
+def model_key(last, prefs):
+    knobs = {k: prefs.get(k) for k in ("prior_strength", "prior_scale", "half_life_gw", "perf_min_minutes")}
+    code = hashlib.md5(open(fm.__file__, "rb").read() + open(__file__, "rb").read()).hexdigest()[:8]
+    return f"{last}|{json.dumps(knobs, sort_keys=True)}|{code}"
+
+
+def compute(boot, fixtures, hist, prefs):
     last = max((e["id"] for e in boot["events"] if e["finished"]), default=0)
-    if last < 5:
-        print("Not enough finished gameweeks to backtest yet (need at least 5).")
-        return
-    pos_of = {e["id"]: e["element_type"] for e in boot["elements"]}
-    price = {e["id"]: e["now_cost"] / 10.0 for e in boot["elements"]}
+    if last < FIRST_GW + 1:
+        return None
     actual = {pid: {r["round"]: r["total_points"] for r in rows} for pid, rows in hist.items()}
-    recs = []                                                       # one dict per (gw, player)
-    for g in range(4, last + 1):
+    price = {e["id"]: e["now_cost"] / 10.0 for e in boot["elements"]}
+    recs, scores = [], {}                                    # scores[(wo,wp,wv)][gw] = {pos: (pts, cost)}
+    mix_of = {m: {} for m in MIX}
+    for g in range(FIRST_GW, last + 1):
         b = copy.deepcopy(boot)
         for ev in b["events"]:
             ev["is_current"] = ev["id"] == g - 1; ev["is_next"] = ev["id"] == g
@@ -47,66 +78,123 @@ def main(root, prefs):
         h = {pid: rows for pid, rows in h.items() if rows}
         xg = fm.team_match_table(b, fx, h)
         model = fm.fit_teams(b, fx, xg, g - 1, prefs)
-        players, _, gws = fm.project(b, fx, h, model, prefs, horizon_gws=3)
+        players, _, _ = fm.project(b, fx, h, model, prefs, horizon_gws=3)
+        for p in players:
+            _cut_stats(p, h[p["id"]])
+        players = fm.perf_scores(players, prefs.get("perf_min_minutes", 270))
         horizon = [x for x in range(g, g + 3) if x <= last]
         for p in players:
-            if not p["fx"] or p["pm1"] < 0.5:
+            p["xp1"] = sum(f[3] for f in p["fx"] if f[0] == g)
+            p["xp3"] = sum(f[3] for f in p["fx"] if f[0] in horizon)
+            rows = h[p["id"]]; pts = [r["total_points"] for r in rows]
+            p["form3"] = float(np.mean(pts[-3:])); p["avg"] = float(np.mean(pts))
+            p["y1"] = actual[p["id"]].get(g, 0.0)
+            p["y3"] = sum(actual[p["id"]].get(x, 0.0) for x in horizon)
+            p["price_now"] = price[p["id"]]
+            p["reg"] = p["pm1"] >= 0.25 and len(p["fx"]) > 0
+        # ---- accuracy records (players expected to play)
+        for p in players:
+            if p["fx"] and p["pm1"] >= 0.5:
+                recs.append({"gw": g, "pos": p["p"], "xp1": p["xp1"], "form3": p["form3"], "avg": p["avg"], "y1": p["y1"]})
+        # ---- weight mixes, evaluated with the page's own Score formula
+        for pt, k in TOPN.items():
+            grp = [p for p in players if p["p"] == pt]
+            if len(grp) < k * 3:
                 continue
-            xp1 = sum(f[3] for f in p["fx"] if f[0] == g)
-            xp3 = sum(f[3] for f in p["fx"] if f[0] in horizon)
-            rows = h[p["id"]]
-            games = [r["total_points"] for r in rows]
-            mins = sum(r["minutes"] for r in rows)
-            recs.append({"gw": g, "id": p["id"], "pos": p["p"], "price": p["pr"], "xp1": xp1, "xp3": xp3,
-                         "form3": float(np.mean(games[-3:])), "avg": float(np.mean(games)),
-                         "p90": sum(games) / (mins / 90.0) if mins else 0.0, "mins": mins,
-                         "y1": actual[p["id"]].get(g, 0.0), "y3": sum(actual[p["id"]].get(x, 0.0) for x in horizon)})
-    print(f"Backtest over GW4-GW{last}: {len(recs)} player-gameweeks\n")
+            mask = [p["reg"] for p in grp]
+            po = _pct([p["xp3"] for p in grp], mask)
+            pv = _pct([p["xp3"] / p["price_now"] for p in grp], mask)
+            pf = np.array([p["perf"] for p in grp], float)
+            y3 = np.array([p["y3"] for p in grp]); pr = np.array([p["price_now"] for p in grp])
+            mk = np.array(mask)
+            for wo, wp, wv in MIX:
+                sc = np.where(mk, (wo * po + wp * pf + wv * pv) / 100.0, 0.0)
+                top = np.argsort(-sc, kind="stable")[:k]
+                mix_of[(wo, wp, wv)].setdefault(g, {})[pt] = (float(y3[top].mean()), float(y3[top].sum() / max(pr[top].sum(), 0.1)))
+    gws = list(range(FIRST_GW, last + 1))
 
-    # ---- 1) point-forecast quality (GW g only), players expected to play
-    print("1) Single-gameweek projection quality (Spearman rank correlation with actual points; higher is better)")
-    print(f"   {'pos':4} {'model':>7} {'form3':>7} {'avg':>7}   MAE model  MAE avg")
+    def series(mx, idx):
+        out = []
+        for g in gws:
+            d = mix_of[mx].get(g, {})
+            out.append(float(np.mean([v[idx] for v in d.values()])) if d else np.nan)
+        return np.array(out)
+
+    res = {}
+    for target, idx in (("pts", 0), ("per_m", 1)):
+        S = {mx: series(mx, idx) for mx in MIX}
+        avg = {mx: float(np.nanmean(v)) for mx, v in S.items()}
+        best = max(avg, key=avg.get)
+        rows = []
+        for mx in MIX:
+            diff = S[best] - S[mx]
+            n = int(np.sum(~np.isnan(diff)))
+            se = float(np.nanstd(diff, ddof=1) / np.sqrt(n)) if n > 2 else 0.0
+            gap = avg[best] - avg[mx]
+            rows.append({"wo": mx[0], "wp": mx[1], "wv": mx[2], "v": round(avg[mx], 3), "gap": round(gap, 3), "se": round(se, 3),
+                         "tie": bool(gap <= 2 * se + 1e-9)})
+        rows.sort(key=lambda r: -r["v"])
+        odd = np.array([np.nanmean(S[mx][0::2]) for mx in MIX]); even = np.array([np.nanmean(S[mx][1::2]) for mx in MIX])
+        rho = float(spearmanr(odd, even)[0]) if len(set(odd)) > 1 and len(set(even)) > 1 else 0.0
+        res[target] = {"mixes": rows, "best": {"wo": best[0], "wp": best[1], "wv": best[2]}, "n_tied": sum(r["tie"] for r in rows),
+                       "stability": round(rho, 2)}
+    acc = {}
     for pt, nm in ((1, "GKP"), (2, "DEF"), (3, "MID"), (4, "FWD")):
         r = [x for x in recs if x["pos"] == pt]
         if len(r) < 30:
             continue
         y = [x["y1"] for x in r]
-        sp = lambda k: spearmanr([x[k] for x in r], y)[0]
-        mae = lambda k: float(np.mean([abs(x[k] - x["y1"]) for x in r]))
-        print(f"   {nm:4} {sp('xp1'):7.3f} {sp('form3'):7.3f} {sp('avg'):7.3f}   {mae('xp1'):8.2f} {mae('avg'):8.2f}")
-    bias = float(np.mean([x["xp1"] - x["y1"] for x in recs]))
-    print(f"   mean bias (projected - actual): {bias:+.2f} pts/player/GW\n")
+        sp = lambda key: round(float(spearmanr([x[key] for x in r], y)[0]), 3)         # noqa: E731
+        mae = lambda key: round(float(np.mean([abs(x[key] - x["y1"]) for x in r])), 2)  # noqa: E731
+        acc[nm] = {"n": len(r), "rho": sp("xp1"), "rho_form": sp("form3"), "rho_avg": sp("avg"), "mae": mae("xp1"), "mae_avg": mae("avg")}
+    per_gw = []
+    for g in gws:
+        r = [x for x in recs if x["gw"] == g]
+        if len(r) > 30:
+            per_gw.append({"gw": g, "rho": round(float(spearmanr([x["xp1"] for x in r], [x["y1"] for x in r])[0]), 3)})
+    bias = round(float(np.mean([x["xp1"] - x["y1"] for x in recs])), 2) if recs else 0.0
+    return {"key": model_key(last, prefs), "finished": last, "gws": [gws[0], gws[-1]], "computed": time.strftime("%d %b %H:%M"),
+            "n": len(recs), "accuracy": acc, "per_gw": per_gw, "bias": bias, "topn": TOPN, **res}
 
-    # ---- 2) weight grid: realised points (next 3 GWs) of the top picks per position, averaged over gameweeks
-    grid = []
-    cur = (prefs["weights"]["outlook"], prefs["weights"]["perf"], prefs["weights"]["value"])
-    combos = [(wo, wp) for wo, wp in itertools.product(range(0, 101, 10), repeat=2) if wo + wp <= 100] + [(cur[0], cur[1])]
-    for wo, wp in combos:
-        wv = 100 - wo - wp
-        tot, n = 0.0, 0
-        for g in sorted({x["gw"] for x in recs}):
-            for pt, k in TOPN.items():
-                r = [x for x in recs if x["gw"] == g and x["pos"] == pt]
-                if len(r) < k * 3:
-                    continue
-                po = _pct([x["xp3"] for x in r]); pv = _pct([x["xp3"] / x["price"] for x in r])
-                reg = [x["mins"] >= 270 for x in r]
-                pf = _pct([x["p90"] if x["mins"] >= 270 else 0 for x in r])
-                score = [(wo * a + wp * bb + wv * c) for a, bb, c in zip(po, pf, pv)]
-                top = np.argsort(score)[::-1][:k]
-                tot += float(np.mean([r[i]["y3"] for i in top])); n += 1
-        grid.append((tot / n if n else 0, wo, wp, wv))
-    grid.sort(reverse=True)
-    print("2) Ranking weights: average realised points over the next 3 GWs of the top picks per position")
-    print("   (outlook = projected points, perf = points per 90 so far, value = projected points per GBP million)")
-    for sc, wo, wp, wv in grid[:6]:
-        print(f"   outlook {wo:3d} / perf {wp:3d} / value {wv:3d}  ->  {sc:6.2f}")
-    mine = next((x for x in grid if (x[1], x[2], x[3]) == cur), None)
-    if mine:
-        print(f"   your current {cur[0]}/{cur[1]}/{cur[2]}: {mine[0]:.2f}  (rank {grid.index(mine) + 1} of {len(grid)})")
-    top_only = next((x for x in grid if (x[1], x[2], x[3]) == (100, 0, 0)), None)
-    if top_only:
-        print(f"   projections only 100/0/0: {top_only[0]:.2f}")
-    print("\nCaveat: one season so far, few gameweeks, top-N picks overlap heavily between weightings - differences of")
-    print("~0.1-0.2 pts are noise. Past injury news is not stored, so availability is assumed 100% (flatters nobody, but")
-    print("is slightly harsher on the model than real use). Re-run as the season progresses.")
+
+def get(boot, fixtures, hist, prefs, force=False):
+    """Cached result; recomputed only when a new gameweek has finished or the model/knobs changed."""
+    last = max((e["id"] for e in boot["events"] if e["finished"]), default=0)
+    try:
+        c = json.load(open(FILE, encoding="utf-8"))
+        if not force and c.get("key") == model_key(last, prefs):
+            return c
+    except Exception:                                   # noqa: BLE001
+        pass
+    r = compute(boot, fixtures, hist, prefs)
+    if r:
+        os.makedirs(DATA, exist_ok=True)
+        json.dump(r, open(FILE, "w", encoding="utf-8"))
+    return r
+
+
+def main(root, prefs):
+    boot, fixtures = fd.load_core()
+    hist = fd.load_histories(boot)
+    r = get(boot, fixtures, hist, prefs, force=True)
+    if not r:
+        print("Not enough finished gameweeks to backtest yet.")
+        return
+    print(f"Backtest over GW{r['gws'][0]}-GW{r['gws'][1]}: {r['n']} player-gameweeks\n")
+    print("1) Single-gameweek projection quality (Spearman rank correlation with actual points; higher is better)")
+    print(f"   {'pos':4} {'model':>7} {'form3':>7} {'avg':>7}   MAE model  MAE avg")
+    for nm, a in r["accuracy"].items():
+        print(f"   {nm:4} {a['rho']:7.3f} {a['rho_form']:7.3f} {a['rho_avg']:7.3f}   {a['mae']:8.2f} {a['mae_avg']:8.2f}")
+    print(f"   mean bias (projected - actual): {r['bias']:+.2f} pts/player/GW\n")
+    cur = prefs["weights"]
+    for target, label in (("pts", "points of the top picks over the next 3 GWs"), ("per_m", "points per GBP million of the top picks")):
+        t = r[target]
+        print(f"2) Weights, by {label}")
+        for m in t["mixes"][:6]:
+            print(f"   outlook {m['wo']:3d} / perf {m['wp']:3d} / value {m['wv']:3d}  ->  {m['v']:6.2f}   gap {m['gap']:.2f} (se {m['se']:.2f}){'  ~tied with best' if m['tie'] else ''}")
+        mine = next((m for m in t["mixes"] if (m["wo"], m["wp"], m["wv"]) == (cur["outlook"], cur["perf"], cur["value"])), None)
+        if mine:
+            print(f"   yours {cur['outlook']}/{cur['perf']}/{cur['value']}: {mine['v']:.2f} (rank {t['mixes'].index(mine) + 1} of {len(t['mixes'])}, {'tied with the best' if mine['tie'] else 'behind the best'})")
+        print(f"   {t['n_tied']} of {len(t['mixes'])} mixes are statistically tied with the best; odd-vs-even gameweek stability {t['stability']:+.2f}\n")
+    print("Caveat: one season, few gameweeks, overlapping windows, today's prices; the best of ~200 mixes is flattered by")
+    print("being picked on the same data. Treat a tie as a tie.")

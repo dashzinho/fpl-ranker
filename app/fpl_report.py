@@ -6,7 +6,7 @@ import fpl_extra as fx
 from paths import APP
 
 
-def build_data(boot, fixtures, hist, prefs, my_team=None, news=None):
+def build_data(boot, fixtures, hist, prefs, my_team=None, news=None, bt=None):
     cur = next((e["id"] for e in boot["events"] if e["is_current"]), 0)
     nxt = next((e["id"] for e in boot["events"] if e["is_next"]), cur + 1)
     xg = fm.team_match_table(boot, fixtures, hist)
@@ -61,6 +61,7 @@ def build_data(boot, fixtures, hist, prefs, my_team=None, news=None):
         data["price"] = {"changes": [], "momentum": {}, "snapshots": 0, "error": str(e)}
     ctx = fx.export_context(data, boot, news)
     data["ai"] = fx.load_insights(boot, ctx["refs"])
+    data["bt"] = bt
     return data
 
 

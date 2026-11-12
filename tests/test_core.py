@@ -3,7 +3,7 @@ import json, os, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "app"))
-import fpl_data as fd, fpl_extra as fx, fpl_model as fm, fpl_news as fn   # noqa: E402
+import backtest as bt, fpl_data as fd, fpl_extra as fx, fpl_model as fm, fpl_news as fn   # noqa: E402
 
 
 class BanProbs(unittest.TestCase):
@@ -116,6 +116,42 @@ class NewsFilter(unittest.TestCase):
     def test_keeps_mens_premier_league(self):
         for t in ["Haaland ruled out with knock", "Arsenal injury news: Saka doubt", "Salah returns to training", "Premier League team news"]:
             self.assertFalse(fn.EXCLUDE.search(t), t)
+
+
+class Weights(unittest.TestCase):
+    def test_save_merges_and_validates(self):
+        with tempfile.TemporaryDirectory() as d:
+            json.dump({"fpl_team_id": 7}, open(os.path.join(d, "prefs.local.json"), "w"))
+            w = fx.save_weights(d, {"wo": 80, "wp": "0", "wv": 20})
+            self.assertEqual(w, {"outlook": 80, "perf": 0, "value": 20})
+            saved = json.load(open(os.path.join(d, "prefs.local.json")))
+            self.assertEqual(saved["fpl_team_id"], 7); self.assertEqual(saved["weights"]["value"], 20)
+
+    def test_rejects_bad_weights_and_leaves_file_alone(self):
+        with tempfile.TemporaryDirectory() as d:
+            for bad in ({"wo": 0, "wp": 0, "wv": 0}, {"wo": 101, "wp": 0, "wv": 0}, {"wo": -1, "wp": 5, "wv": 5},
+                        {"wo": "x", "wp": 1, "wv": 1}, {"wo": 1, "wp": 1}, None, {"wo": 1.5e9, "wp": 1, "wv": 1}):
+                with self.assertRaises(ValueError): fx.save_weights(d, bad)
+            self.assertFalse(os.path.exists(os.path.join(d, "prefs.local.json")))
+
+
+class BacktestMaths(unittest.TestCase):
+    def test_percentile_matches_the_page(self):
+        out = bt._pct([10, 20, 30, 40], [True, True, True, True])
+        self.assertEqual(list(out), [0.0, 100 / 3, 200 / 3, 100.0])
+
+    def test_ineligible_players_score_zero_and_ties_share_rank(self):
+        out = bt._pct([5, 5, 9, 1], [True, True, True, False])
+        self.assertEqual(out[3], 0.0); self.assertEqual(out[0], out[1]); self.assertGreater(out[2], out[0])
+
+    def test_mix_grid_is_complete(self):
+        self.assertTrue(all(a + b + c == 100 for a, b, c in bt.MIX)); self.assertEqual(len(bt.MIX), 231)
+
+    def test_cut_stats_use_only_given_rows(self):
+        p = {}
+        bt._cut_stats(p, [{"minutes": 90, "total_points": 6, "bonus": 1, "expected_goal_involvements": "0.5"},
+                          {"minutes": 90, "total_points": 2, "bonus": 0, "expected_goal_involvements": "0.5"}])
+        self.assertEqual((p["mins"], p["pts"], round(p["p90"], 2), round(p["xgi90"], 2), round(p["bn90"], 2)), (180, 8, 4.0, 0.5, 0.5))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
   POST /api/refresh   starts the update flow (same command you'd run by hand) in the background
   POST /api/ai        runs the Claude Code skill "fpl-ai-insights" headlessly (read-only context in, one JSON file out)
   GET  /api/ai/status {running, ok, message, seconds, cost_usd}
+  POST /api/weights   saves the Score weights chosen on the Model tab to prefs.local.json, then rebuilds
   POST /api/snapshot  receives your logged-in FPL team from the "Sync FPL team" bookmarklet (see My team tab)
 
 Security: binds to 127.0.0.1 only, POST needs a custom header (blocks cross-site requests) and a
@@ -12,7 +13,7 @@ cross-origin calls, but only from https://fantasy.premierleague.com, only for yo
 writes data/my_team_login.json after validating the payload.
 """
 import http.server, json, os, subprocess, sys, threading, time, webbrowser
-import fpl_data as fd, shutil
+import fpl_data as fd, fpl_extra as fd_extra, shutil
 from functools import partial
 
 
@@ -154,6 +155,14 @@ def serve(root, html_path, refresh_cmd, port, open_browser):
             path = self.path.split("?")[0]
             if path == "/api/snapshot":
                 return self._snapshot()
+            if path == "/api/weights":
+                if self.headers.get("X-Requested-With") != "weights-button": return self._json(403, {"error": "forbidden"})
+                try:
+                    saved = fd_extra.save_weights(root, self._read_json(2000))
+                except Exception as e:                   # noqa: BLE001
+                    return self._json(400, {"error": str(e)[:120]})
+                start_job()
+                return self._json(200, {"ok": True, "weights": saved})
             if path == "/api/ai":
                 if self.headers.get("X-Requested-With") != "ai-button": return self._json(403, {"error": "forbidden"})
                 with ai.lock:

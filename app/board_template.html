@@ -117,6 +117,7 @@ a.nl{margin-left:auto;font-size:11.5px;color:var(--muted);text-decoration:none;f
 .pladd{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.pladd select{padding:5px 8px;font-size:12px;flex:1;min-width:120px}
 .lah{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;font-weight:700}.lah select{width:auto;padding:6px 8px}
 .homegrid .span3{grid-column:1/-1}.cols2{columns:2;column-gap:28px}.cols2 .nline{break-inside:avoid}@media(max-width:800px){.cols2{columns:1}}
+.btbar{display:inline-block;width:110px;height:8px;border-radius:4px;background:var(--panel2);vertical-align:middle;margin-right:6px;overflow:hidden}.btbar i{display:block;height:100%;background:linear-gradient(90deg,var(--violet),var(--accent))}
 #tipbox{position:fixed;z-index:200;display:none;max-width:320px;padding:9px 12px;border-radius:10px;background:#07071a;color:#ecebff;border:1px solid var(--violet);box-shadow:0 10px 30px rgba(0,0,0,.45);font:12.5px/1.45 Inter,"Segoe UI",system-ui,sans-serif;pointer-events:none}
 [data-tip]{cursor:help}
 .info{display:inline-grid;place-items:center;width:15px;height:15px;margin-left:5px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font:700 10px/1 sans-serif;font-style:normal;vertical-align:1px}
@@ -180,7 +181,7 @@ table.mt{margin-top:8px}.mfx{margin-top:4px}.mfx .fx{min-width:50px}
 <body>
 <header class="top">
   <div class="brand"><div class="logo">FPL</div><div><h1>FPL Rankings</h1><p id="sub"></p></div></div>
-  <div class="seg" id="tabs"><button data-t="home">Home</button><button data-t="my">My team</button><button data-t="rk">Rankings</button><button data-t="tm">Fixtures</button><button data-t="cmp">Compare</button><button data-t="wt">Watch</button><button data-t="nw">News</button><button data-t="sq">Best squad</button></div>
+  <div class="seg" id="tabs"><button data-t="home">Home</button><button data-t="my">My team</button><button data-t="rk">Rankings</button><button data-t="tm">Fixtures</button><button data-t="cmp">Compare</button><button data-t="wt">Watch</button><button data-t="nw">News</button><button data-t="sq">Best squad</button><button data-t="md">Model</button></div>
   <label class="lah hide" id="lah">Look-ahead <select id="hsel"></select></label>
   <div class="stats" id="stats"></div>
   <button class="themebtn" id="theme" aria-label="Toggle theme">◐</button>
@@ -215,10 +216,10 @@ const PL = Object.fromEntries(D.players.map(p => [p.id, p]));
 const gbp = v => '£' + v.toFixed(1) + 'm';
 const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
 const GW = D.meta.gws;
-const DEF = {tab: 'home', h: D.meta.horizon, wo: D.weights.outlook, wp: D.weights.perf, wv: D.weights.value, pos: 0, pr: 15.5, team: 0, q: '', avail: false, diff: false, reg: true, sort: 'score', dir: -1, shown: 25, sqh: 5, ai: false, style: 'cons', pl: {}, plc: {}, lock: [], excl: [], cmp: [], pa: null, mt: 'lineup', view: 'sug', plan: [], auto: false, nf: 'rel'};
+const DEF = {tab: 'home', h: D.meta.horizon, wo: D.weights.outlook, wp: D.weights.perf, wv: D.weights.value, pos: 0, pr: 15.5, team: 0, q: '', avail: false, diff: false, reg: true, sort: 'score', dir: -1, shown: 25, sqh: 5, btT: 'pts', ai: false, style: 'cons', pl: {}, plc: {}, lock: [], excl: [], cmp: [], pa: null, mt: 'lineup', view: 'sug', plan: [], auto: false, nf: 'rel'};
 let S = JSON.parse(JSON.stringify(DEF));
-try { Object.assign(S, JSON.parse(localStorage.getItem('fplboard4') || '{}')); } catch (e) {}
-const save = () => { try { localStorage.setItem('fplboard4', JSON.stringify(S)); } catch (e) {} };
+try { Object.assign(S, JSON.parse(localStorage.getItem('fplboard5') || '{}')); } catch (e) {}
+const save = () => { try { localStorage.setItem('fplboard5', JSON.stringify(S)); } catch (e) {} };
 const open = new Set();
 
 /* ---------- model helpers ---------- */
@@ -1051,8 +1052,75 @@ function tickCountdown() {
   el.textContent = `${d}d ${h}h ${m}m`;
 }
 
+
+Object.assign(TIPS, {
+  t_md: 'Model health: how accurate the projections have been, and which Score weights would have picked better players in past gameweeks.',
+  bt_what: 'Re-runs the model for every finished gameweek using only the data available before it, then checks how many points the top-ranked players (the same top picks Overview and Rankings show) actually scored over the next 3 gameweeks, for every mix of the three weights.',
+  bt_value: 'Average points the top-ranked players scored over the next 3 gameweeks (or per £m of their price, for the second target), averaged across positions and gameweeks.',
+  bt_gap: 'How far this mix trails the best, plus or minus one standard error across gameweeks. "≈ tie" means within about two standard errors: not distinguishable from the best on this data.',
+  bt_pts: 'Judge mixes by raw points scored by the top picks. Favours projections over value.',
+  bt_perm: 'Judge mixes by points per £m of the top picks. Favours cheap players, so it favours a high value weight.',
+  bt_save: 'Writes these slider values to prefs.local.json as the new default and rebuilds the page.',
+  bt_acc: 'For each position: how well the model, last-3-gameweeks form and season average each ranked players by what they scored the next gameweek. Rank correlation: 1 is perfect, 0 is no better than chance.',
+  bt_gw: 'The model\'s rank correlation for each gameweek. Single weeks vary a lot, which is why gains of a point or two are not conclusive.'
+});
+
+/* ---------- model tab: weights backtest ---------- */
+function myMixKey() {
+  const t = S.wo + S.wp + S.wv; if (!t) return null;
+  let a = [S.wo, S.wp, S.wv].map(x => Math.round(x * 100 / t / 5) * 5);
+  a[2] = Math.max(0, 100 - a[0] - a[1]); return a;
+}
+function viewModel() {
+  const B = D.bt;
+  if (!B) return `<div class="card empty">The backtest needs at least five finished gameweeks. Run <code>python fpl.py --backtest</code> once more data is in.</div>`;
+  const tg = S.btT === 'per_m' ? 'per_m' : 'pts', T = B[tg], key = myMixKey();
+  const mine = key ? T.mixes.find(m => m.wo === key[0] && m.wp === key[1] && m.wv === key[2]) : null;
+  const rankMine = mine ? T.mixes.indexOf(mine) + 1 : null;
+  const unit = tg === 'pts' ? 'pts' : 'pts / £m', max = T.mixes[0].v, min = Math.min(...T.mixes.map(m => m.v));
+  const rows = T.mixes.slice(0, 8);
+  if (mine && !rows.includes(mine)) rows.push(mine);
+  const bar = v => Math.max(4, Math.round(100 * (v - min * 0.97) / (max - min * 0.97 + 1e-9)));
+  const table = `<table class="mt"><thead><tr><th>Outlook / Perf / Value</th><th class="r" ${tip('bt_value')}>${tg === 'pts' ? 'Points of top picks' : 'Points per £m'}</th><th class="r" ${tip('bt_gap')}>Behind best</th><th></th></tr></thead><tbody>
+    ${rows.map(m => { const you = m === mine; return `<tr class="${you ? 'cur' : ''}"><td><b class="num">${m.wo} / ${m.wp} / ${m.wv}</b> ${you ? '<span class="tag good">your sliders</span>' : ''}</td>
+      <td class="r num"><span class="btbar"><i style="width:${bar(m.v)}px"></i></span> ${m.v.toFixed(2)}</td>
+      <td class="r num">${m.gap === 0 ? 'best' : '−' + m.gap.toFixed(2) + ' ± ' + m.se.toFixed(2)} ${m.tie ? '<span class="tag" data-tip="Within about two standard errors of the best mix: statistically a tie." tabindex="0">≈ tie</span>' : '<span class="tag warn">behind</span>'}</td>
+      <td class="r"><button class="plan" data-usew="${m.wo},${m.wp},${m.wv}">Use</button></td></tr>`; }).join('')}</tbody></table>`;
+  const stab = T.stability >= 0.8 ? 'Odd and even gameweeks rank the mixes alike, so the ordering is fairly consistent.' : T.stability >= 0.5 ? 'The ordering is only partly consistent between odd and even gameweeks.' : 'Odd and even gameweeks disagree, so the ordering is mostly noise.';
+  const verdict = mine ? (mine.tie ? `Your current mix (${key.join('/')}) is <b>statistically tied</b> with the best on this data: changing it is unlikely to matter yet.`
+      : `Your current mix (${key.join('/')}) trails the best by ${mine.gap.toFixed(2)} ${unit} (±${mine.se.toFixed(2)}): a real but small gap.`) : 'Your sliders are not on the 5-point grid tested.';
+  const acc = Object.entries(B.accuracy);
+  const mxr = Math.max(0.6, ...B.per_gw.map(g => g.rho));
+  return `<div class="posbar"><button class="pill ${tg === 'pts' ? 'on' : ''}" data-btt="pts" ${tip('bt_pts')}>Maximise points</button><button class="pill ${tg === 'per_m' ? 'on' : ''}" data-btt="per_m" ${tip('bt_perm')}>Maximise points per £m</button>
+      <span class="tag" style="align-self:center">GW${B.gws[0]}–GW${B.gws[1]} · ${B.n} player-gameweeks · computed ${esc(B.computed)}</span></div>
+    <div class="mygrid"><div class="card section"><h3 class="panel-title">Which weights would have picked better players? ${info('bt_what')}</h3>${table}
+      <div class="mvline" style="margin-top:8px"><button class="plan" id="savew" ${tip('bt_save')} ${location.protocol.startsWith('http') ? '' : 'disabled'}>Save my sliders as default</button><span id="savewst" class="muted"></span></div>
+      <div class="note">"Use" sets the Rankings sliders for this browser. "Save my sliders as default" stores them in <code>prefs.local.json</code> (needs <code>start.bat</code>). Nothing changes automatically.</div></div>
+    <div class="mside"><div class="card section"><h3 class="panel-title">How to read this</h3>
+        <div class="mvline">${verdict}</div>
+        <div class="mvline"><b class="num">${T.n_tied} of ${T.mixes.length}</b>&nbsp;mixes are statistically tied with the best.</div>
+        <div class="mvline">Stability <b class="num">${T.stability >= 0 ? '+' : ''}${T.stability}</b>&nbsp;· ${stab}</div>
+        <div class="note">One season, few gameweeks, overlapping 3-gameweek windows, today's prices, and the best of ${T.mixes.length} mixes is flattered by being picked on the same data. Treat a tie as a tie. ${tg === 'pts' ? 'This target rewards raw points, so it always favours a low value weight.' : 'This target rewards cheap points, so it always favours a high value weight.'}</div></div>
+      <div class="card section"><h3 class="panel-title">Projection accuracy by position ${info('bt_acc')}</h3>
+        <table class="mt"><thead><tr><th></th><th class="r">Model</th><th class="r">Form</th><th class="r">Season avg</th><th class="r">Error (pts)</th></tr></thead><tbody>
+        ${acc.map(([nm, a]) => `<tr><td>${nm}</td><td class="r num ${a.rho >= a.rho_form && a.rho >= a.rho_avg ? 'cmpbest' : ''}">${a.rho.toFixed(2)}</td><td class="r num">${a.rho_form.toFixed(2)}</td><td class="r num">${a.rho_avg.toFixed(2)}</td><td class="r num">${a.mae.toFixed(1)}</td></tr>`).join('')}</tbody></table>
+        <div class="note">Rank correlation with what players actually scored the next gameweek (higher is better), against two naive baselines. Error = mean absolute error of projected vs actual points. Bias ${B.bias >= 0 ? '+' : ''}${B.bias} pts per player.</div></div>
+      <div class="card section"><h3 class="panel-title">Accuracy by gameweek ${info('bt_gw')}</h3>
+        <div class="hbars">${B.per_gw.map(g => `<div class="hb" title="GW${g.gw}: rank correlation ${g.rho}"><i style="height:${Math.max(2, Math.round(Math.max(0, g.rho) / mxr * 70))}px"></i><b class="num">${g.rho.toFixed(2)}</b><small>${g.gw}</small></div>`).join('')}</div></div></div></div>`;
+}
+async function saveWeights() {
+  const st = $('#savewst'), btn = $('#savew'); if (!st) return;
+  btn.disabled = true; st.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/weights', {method: 'POST', headers: {'X-Requested-With': 'weights-button', 'Content-Type': 'application/json'}, body: JSON.stringify({wo: S.wo, wp: S.wp, wv: S.wv})});
+    if (r.status === 403 || r.status === 404) throw new Error('the local server is running old code: close its window and start start.bat again');
+    if (!r.ok) throw new Error((await r.json()).error || 'server said ' + r.status);
+    st.textContent = 'Saved as default. Rebuilding…'; setTimeout(() => location.reload(), 2500);
+  } catch (e) { st.textContent = 'Could not save: ' + e.message; btn.disabled = false; }
+}
+
 function render() {
-  if (!['home', 'my', 'rk', 'tm', 'cmp', 'wt', 'nw', 'sq'].includes(S.tab)) S.tab = 'home';
+  if (!['home', 'my', 'rk', 'tm', 'cmp', 'wt', 'nw', 'sq', 'md'].includes(S.tab)) S.tab = 'home';
   computeScores();
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
   $('#controls').querySelectorAll('.rk-only').forEach(e => e.classList.toggle('hide', S.tab !== 'rk'));
@@ -1063,7 +1131,7 @@ function render() {
   $('#lah').classList.toggle('hide', !['home', 'my', 'rk', 'cmp', 'wt'].includes(S.tab)); $('#hsel').value = S.h;
   $('#v-wo').textContent = S.wo; $('#v-wp').textContent = S.wp; $('#v-wv').textContent = S.wv;
   $('#v-pr').textContent = gbp(+S.pr);
-  $('#view').innerHTML = {home: viewHome, rk: viewRankings, tm: viewTeams, cmp: viewCompare, wt: viewWatch, sq: viewSquad, my: viewMine, nw: viewNews}[S.tab]();
+  $('#view').innerHTML = {home: viewHome, rk: viewRankings, tm: viewTeams, cmp: viewCompare, wt: viewWatch, sq: viewSquad, my: viewMine, nw: viewNews, md: viewModel}[S.tab]();
   bind(); save();
 }
 function bind() {
@@ -1073,6 +1141,9 @@ function bind() {
   document.querySelectorAll('[data-tk]').forEach(el => el.onchange = () => { const k = el.dataset.tk, v = el.value;
     if (k === 'mode') S.tkMode = v; else if (k === 'sort') S.tkSort = v; else if (k === 'from') { const to0 = S.tkTo || GW[Math.min(4, GW.length - 1)]; S.tkFrom = +v; S.tkTo = Math.max(to0, +v + Math.min(4, GW.length - 1 - GW.indexOf(+v))); } else if (k === 'to') S.tkTo = +v; render(); });
   document.querySelectorAll('[data-cmp]').forEach(el => el.onchange = () => { S.cmp = [...document.querySelectorAll('[data-cmp]')].map(x => +x.value).filter(Boolean); render(); });
+  document.querySelectorAll('[data-btt]').forEach(b => b.onclick = () => { S.btT = b.dataset.btt; render(); });
+  document.querySelectorAll('[data-usew]').forEach(b => b.onclick = () => { const [o, p, v] = b.dataset.usew.split(',').map(Number); S.wo = o; S.wp = p; S.wv = v; S.tab = 'rk'; render(); });
+  const sw = $('#savew'); if (sw) sw.onclick = saveWeights;
   document.querySelectorAll('[data-style]').forEach(b => b.onclick = () => { S.style = b.dataset.style; render(); });
   document.querySelectorAll('[data-bw]').forEach(r => r.onchange = () => { const bw = [...bwOf()]; bw[+r.dataset.bw] = +r.value / 100; S.bw = bw; render(); });
   const tg = (key, id) => { const t = new Set(S[key] || []); t.has(id) ? t.delete(id) : t.add(id); S[key] = [...t]; };

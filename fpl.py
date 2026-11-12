@@ -137,7 +137,7 @@ def _run(a):
     first = not state.get("setup_done") or not os.path.exists(os.path.join(ROOT, "prefs.json"))
     if first: setup()
     sys.path.insert(0, APP)
-    import fpl_data as fd, fpl_report as fr, fpl_news as fn
+    import fpl_data as fd, fpl_report as fr, fpl_news as fn, backtest as bt
 
     prefs = load_prefs()
     s_code, s_prefs = sig_code(), sig_prefs()
@@ -179,7 +179,11 @@ def _run(a):
     if prefs.get("fpl_team_id") and not a.offline:
         cur = next((e["id"] for e in boot["events"] if e["is_current"]), 1)
         my = fd.fetch_my_team(prefs["fpl_team_id"], cur, boot)
-    data = fr.build_data(boot, fixtures, hist, prefs, my, news)
+    try:
+        btr = bt.get(boot, fixtures, hist, prefs)       # cached; recomputed only when a gameweek finishes
+    except Exception as e:                           # noqa: BLE001
+        log(f"  backtest skipped: {e}"); btr = None
+    data = fr.build_data(boot, fixtures, hist, prefs, my, news, btr)
     size = fr.write_html(data, HTML)
     nxt = data["meta"]["gw_next"]
     state.update({"setup_done": True, "code": s_code, "prefs": s_prefs, "data_sig": sig, "gw_next": nxt,
