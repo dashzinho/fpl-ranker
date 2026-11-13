@@ -137,14 +137,10 @@ def _fdr_summary(recs, gws):
 
 # ---------------------------------------------------------------- weight sets (team model + score weights)
 TM_KEYS = ("xg_weight", "half_life_gw", "prior_strength", "prior_scale")
-# The team-model sets that are backtested: the named presets first, then a few around the region that scored best. The
-# review of the first 144-set grid showed the team model barely changes which players are picked (87% of the variation in
-# Points came from the Score mix, 7% from the team model), so a short list gives the same answer in seconds.
-TM_SETS = [(0.65, 12, 5, 0.10), (0.65, 12, 20, 0.20), (0.65, 12, 1, 0.10), (0.65, 4, 5, 0.10), (0.65, 100, 5, 0.10),
-           (1.0, 12, 5, 0.10), (0.0, 12, 5, 0.10),
-           (0.65, 12, 10, 0.20), (1.0, 24, 20, 0.20), (1.0, 4, 10, 0.20), (0.65, 24, 10, 0.20), (0.65, 4, 10, 0.20),
-           (1.0, 12, 20, 0.20), (1.0, 100, 20, 0.20), (0.65, 12, 10, 0.10), (0.65, 12, 20, 0.10), (0.0, 12, 20, 0.20)]
-TM_GRID = {k: sorted({t[i] for t in TM_SETS}) for i, k in enumerate(TM_KEYS)}      # the values used, for display
+# Every combination of these values is backtested: 3 x 4 x 4 x 3 = 144 team-model sets (each refit takes about a millisecond).
+TM_GRID = {"xg_weight": [0.0, 0.65, 1.0], "half_life_gw": [4, 12, 24, 100],
+           "prior_strength": [1, 5, 10, 20], "prior_scale": [0.05, 0.10, 0.20]}
+TM_SETS = list(itertools.product(*TM_GRID.values()))
 WF_START = 6                                          # first gameweek of the walk-forward test (needs a few gameweeks of history)
 TM_DEFAULT = {"xg_weight": 0.65, "half_life_gw": 12, "prior_strength": 5.0, "prior_scale": 0.10}
 W_DEFAULT = (60, 25, 15)
