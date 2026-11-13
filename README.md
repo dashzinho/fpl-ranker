@@ -17,15 +17,26 @@
 
 Everything (fetching, team-strength model, expected points, ranking, backtests, HTML) is deterministic Python.
 
+## About
+
+I built this to answer two questions FPL's own tools don't: **which fixtures are really easy right now**, and **which model settings would actually have worked**. FPL's difficulty rating is a coarse 2-5 number that doesn't move with form, so this fits its own team-strength model on results and xG, turns that into expected points per player, and then **backtests its own settings on past gameweeks** instead of asking you to trust them.
+
+- 🔒 **Local and private.** One HTML page on your machine. No account, no hosted service, no tracking. It only talks to FPL's public API and a few news RSS feeds; your login is never handled (the optional team sync is a bookmarklet that posts only to `127.0.0.1`).
+- 🧮 **No AI needed.** The model is plain, deterministic Python (numpy + scipy). An optional Claude Code skill adds news-based suggestions, and it is opt-in.
+- 🎯 **Honest about uncertainty.** Near-ties are labelled as ties, the backtest shows its own noise, and nothing changes your settings unless you choose it (or turn on auto-pick).
+
+**Requirements:** Python 3 (developed and tested on 3.14, Windows 11; macOS and Linux should work via `python fpl.py`, but are untested). The first run installs `numpy` and `scipy` for you. No API key.
+
 ## Contents
 
+- [About](#about)
 - [Quick start](#-quick-start)
 - [What it does](#-what-it-does)
 - [How the model works](#-how-the-model-works)
 - [The Model tab: weight sets and the backtest](#-the-model-tab-weight-sets-and-the-backtest)
 - [Auto-pick](#-auto-pick)
 - [Preferences](#-preferences)
-- [Pages](#-pages) · [Things worth knowing](#-things-worth-knowing) · [Layout](#-layout) · [One-click mode](#-one-click-mode-update-button) · [Notes](#-notes) · [License](#license)
+- [Pages](#-pages) · [Things worth knowing](#-things-worth-knowing) · [Layout](#-layout) · [One-click mode](#-one-click-mode-update-button) · [Notes](#-notes) · [Disclaimer](#disclaimer) · [License](#license)
 
 ---
 
@@ -287,6 +298,10 @@ Double-click `start.bat` (or run `python fpl.py --serve --open`). It serves the 
 - Data source: the official FPL API (unofficial but free, no key). Selling prices need a login, so "My team" uses current prices.
 - Projections, not guarantees. The weights are backtested on this season only (see the [limits](#rank-ties-and-noise) above). For a longer test, past-season data is at [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League).
 - Works as a Claude Code skill (`/fpl-rankings`), but needs no AI to run; a news layer could write adjustments to a file the model reads.
+
+## Disclaimer
+
+This is an unofficial fan project. It is **not affiliated with, endorsed by or connected to the Premier League or Fantasy Premier League**. It reads FPL's public, undocumented API, which can change or be rate-limited without notice; the app caches data and only re-fetches what changed to keep its requests light. Projections are estimates, not guarantees, and not betting or financial advice.
 
 ## License
 
