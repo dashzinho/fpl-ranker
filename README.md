@@ -55,7 +55,7 @@ First run sets itself up (creates `data/` and `output/`, installs `numpy` and `s
 | Last check was less than `min_refresh_minutes` ago | no network at all |
 | Nothing changed (results, prices, injury news) | fetches ~2 MB, prints "Up to date", rebuilds nothing |
 | Something changed | re-fetches only the players whose minutes/points changed, rebuilds |
-| A gameweek has just finished (all matches done) | also re-runs the weight-set backtest (about 5 s, once) and, if auto-pick is on, adopts the best team-model set |
+| A gameweek has just finished (all matches done) | also re-runs the weight-set backtest (about 40 s, once) and, if auto-pick is on, adopts the best team-model set |
 
 **Flags:** `--force` (rebuild anyway) · `--offline` (cached data only) · `--open` (open the page) · `--serve` (local server with the Update button) · `--backtest` (print the backtest report)
 
@@ -69,7 +69,7 @@ First run sets itself up (creates `data/` and `output/`, installs `numpy` and `s
 | 🏟️ **Team strength model** | Poisson attack/defence ratings fitted on finished matches, from a mix of xG and goals, recent matches weighing more. FPL's coarse 2-5 strength is only a prior that fades as matches are played, so a team expected to be bad that is performing well stops counting as an easy fixture. Home advantage is fitted too. |
 | 🎯 **Expected points** | Per fixture, for every player: appearance, goals, assists (xG/xA blended with actual output, shrunk toward the position average), clean sheets, goals conceded, saves, bonus, defensive contribution and cards, scaled by the fixture model and a minutes/availability model. Blank and double gameweeks are handled automatically. |
 | 📈 **Ranking** | Composite score = weighted percentiles (within each position) of projected points over a look-ahead window, season performance index, and points per £. Weights and horizon are adjustable live in the page. |
-| 🧪 **Backtest of all of it** | The Model tab re-runs the whole pipeline for every finished gameweek on earlier data only, and scores 3,927 combinations of settings. It can adopt the best team model for you after each gameweek (auto-pick), and tests whether that actually helps. |
+| 🧪 **Backtest of all of it** | The Model tab re-runs the whole pipeline for every finished gameweek on earlier data only, and scores 33,264 combinations of settings. It can adopt the best team model for you after each gameweek (auto-pick), and tests whether that actually helps. |
 | 🗂️ **Page tabs** | Overview (top 8 per position), Rankings (filters, sortable, expandable breakdown per player), Teams & fixtures (current vs preseason rating, difficulty grid), Best squad (integer-programming optimiser: budget, 3 per club, valid formation), My team (swap suggestions, needs `fpl_team_id`), Model (the backtest). More under [Pages](#-pages). |
 
 ---
@@ -84,7 +84,7 @@ flowchart LR
     B --> C["2 Fixture difficulty<br/>expected goals for / against"]
     C --> D["3 Expected points<br/>per player, per fixture"]
     D --> E["4 Score<br/>outlook · perf · value"]
-    F["Weight-set backtest<br/>3,927 sets"] -. "auto-pick chooses" .-> B
+    F["Weight-set backtest<br/>33,264 sets"] -. "auto-pick chooses" .-> B
     F -. "informs (you choose)" .-> E
 ```
 
@@ -124,7 +124,7 @@ flowchart LR
 
 The question it answers: ***which settings would have worked best so far?*** It re-runs the pipeline for every finished gameweek **using only data from before that gameweek**, then scores it on what actually happened. Nothing from the future leaks in.
 
-- **A set is seven numbers:** the four team-model settings plus the three Score weights. 17 team-model sets × 231 Score mixes = **3,927 sets**, each backtested (about 5 seconds, once per gameweek).
+- **A set is seven numbers:** the four team-model settings plus the three Score weights. 144 team-model sets × 231 Score mixes = **33,264 sets**, each backtested (about 40 seconds, once per finished gameweek).
 - **Four measures:**
 
   | Measure | What it checks |
@@ -155,7 +155,7 @@ When a gameweek has fully finished (all matches done, FPL's `finished` flag), th
 | **Revert last pick** | Puts back the values the last pick replaced and turns auto-pick off. Every pick is logged. |
 
 > [!NOTE]
-> **Did it help?** Tested by choosing on earlier gameweeks only and scoring on the next one (GW6 to GW10): auto-pick improved the fixture measures (xG difference +0.10 ± 0.06) and made no clear difference to Points. Five test gameweeks is very little, so it is encouraging, not proof. See [the walk-forward test](docs/MODEL.md#would-auto-pick-have-helped-walk-forward).
+> **Did it help?** Tested by choosing on earlier gameweeks only and scoring on the next one (GW6 to GW10): auto-pick was ahead on all four measures on average (xG difference +0.09 ± 0.07, Points +0.30 ± 0.23) but none of the gaps is clearly bigger than the noise. Five test gameweeks is very little, so it is encouraging, not proof. See [the walk-forward test](docs/MODEL.md#would-auto-pick-have-helped-walk-forward).
 
 ---
 
@@ -217,7 +217,7 @@ LICENSE         MIT
 CONTRIBUTING.md how to report bugs and send pull requests
 prefs.json      preferences
 app/            fpl_data.py (API + cache), fpl_model.py (team strength + expected points), backtest.py (accuracy,
-                official-FDR comparison, 3.9k weight sets), autopick.py, fpl_report.py, fpl_extra.py, fpl_news.py,
+                official-FDR comparison, 33k weight sets), autopick.py, fpl_report.py, fpl_extra.py, fpl_news.py,
                 server.py, board_template.html
 docs/           MODEL.md (full model + backtest explanation), demo.gif and screenshots used in this README
 data/           cached API data, state.json, backtest.json, backtest_sets.json/.npz, auto_pick.json, my_team_cache.json,

@@ -121,7 +121,7 @@ def main():
             ov = np.nanmean(np.concatenate([offs[s][k] for s in seasons]))
             offall = np.concatenate([offs[s_][k] for s_ in seasons]); dd = allT[k][d0] - offall
             print(f"   official FDR  {ov:+.4f}  (best set {v[best]:+.4f}, default {v[d0]:+.4f}); default minus FDR {np.nanmean(dd):+.4f} (se {float(bt._se(dd, 0)):.4f}), default better in {int((dd > 0).sum())} of {int((~np.isnan(dd)).sum())} gameweeks")
-    print("\nIs the ordering of sets stable from one season to the next? (rank correlation of the 17 set scores)")
+    print(f"\nIs the ordering of sets stable from one season to the next? (rank correlation of the {nS} set scores)")
     for k in ("gd", "xgd", "ll"):
         for a in range(len(seasons)):
             for b in range(a + 1, len(seasons)):

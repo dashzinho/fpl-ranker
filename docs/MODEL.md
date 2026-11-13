@@ -22,7 +22,7 @@ flowchart LR
     B --> C["② Fixture difficulty<br/>expected goals for / against"]
     C --> D["③ Expected points<br/>per player, per fixture"]
     D --> E["④ Score<br/>outlook · perf · value"]
-    F["Weight-set backtest<br/>3,927 sets"] -. "auto-pick chooses" .-> B
+    F["Weight-set backtest<br/>33,264 sets"] -. "auto-pick chooses" .-> B
     F -. "informs (you choose)" .-> E
 ```
 
@@ -97,13 +97,13 @@ The question it answers: ***which settings would have worked best so far?*** It 
 
 A set is seven numbers: the four team-model settings plus the three Score weights.
 
-- **Team model:** 17 sets (`xg_weight`, `half_life_gw`, `prior_strength`, `prior_scale`): the seven named presets plus ten around the region that scored best. Values used: `xg_weight` 0 / 0.65 / 1.0, `half_life_gw` 4 / 12 / 24 / 100, `prior_strength` 1 / 5 / 10 / 20, `prior_scale` 0.05 / 0.10 / 0.20. Not every combination is run.
+- **Team model:** 144 sets, every combination of `xg_weight` 0 / 0.65 / 1.0, `half_life_gw` 4 / 12 / 24 / 100, `prior_strength` 1 / 5 / 10 / 20 and `prior_scale` 0.05 / 0.10 / 0.20 (3 × 4 × 4 × 3).
 - **Score mix:** outlook / perf / value in steps of 5 summing to 100 (231 mixes).
 
-**17** team-model sets × **231** Score mixes = **3,927 sets**, each backtested in about five seconds.
+**144** team-model sets × **231** Score mixes = **33,264 sets**, each backtested in about 40 seconds, once per finished gameweek.
 
 > [!NOTE]
-> The first version ran a full 144-set grid of team models (33,264 sets, 40 seconds). Checking it showed that in the Points measure **87% of the variation came from the Score mix and only 7% from the team model**, and the default and the auto-picked team model produced almost the same player rankings (rank correlation 0.999; 8 of the top 8 defenders, 7 of 8 midfielders, 5 of 5 forwards and 3 of 3 goalkeepers identical). The team model mainly changes the fixture colours, so the list was shortened.
+> **Where the variation comes from.** In the Points measure **87% of the variation comes from the Score mix and only 7% from the team model**, and the default and the auto-picked team model produce almost the same player rankings (rank correlation 0.999; 8 of the top 8 defenders, 7 of 8 midfielders, 5 of 5 forwards and 3 of 3 goalkeepers identical). The team model mainly changes the fixture colours, not who is picked, so most of its 144 sets are statistically tied.
 
 ### The four measures
 
@@ -114,7 +114,7 @@ A set is seven numbers: the four team-model settings plus the three Score weight
 | **xG difference** | the same against the xG difference, which is less noisy than the score | team model only |
 | **Goals likelihood** | the average log-probability of the goals each team really scored under the set's expected goals (closer to 0 is better); rewards calibrated expected goals, not only a good ranking | team model only |
 
-The last three ignore the Score mix, so there are only **17 distinct scores** for them, each repeated for all 231 mixes. That is why those views rank "of 17" and Points ranks "of 3,927".
+The last three ignore the Score mix, so there are only **144 distinct scores** for them, each repeated for all 231 mixes. That is why those views rank "of 144" and Points ranks "of 33,264".
 
 > [!WARNING]
 > **Points ignores price.** It scores the top picks with no budget, so it always favours a low `value` weight. Use it to compare team models, not to decide how much price should matter. This is why auto-pick never changes your Score weights.
@@ -177,15 +177,15 @@ The fair test: for each test gameweek, choose using **only earlier gameweeks**, 
 
 | Team model, scored on the next gameweek | Auto-pick minus default |
 |---|---|
-| xG difference | **+0.103** ± 0.056 (better in 4 of 5) |
-| Goal difference | +0.100 ± 0.102 (3 of 5) |
-| Goals likelihood | +0.009 ± 0.009 (3 of 5) |
-| Points (default Score mix) | −0.07 ± 0.12 (1 of 5): no clear difference |
+| Goal difference | +0.104 ± 0.106 (better in 3 of 5) |
+| xG difference | +0.093 ± 0.066 (3 of 5) |
+| Goals likelihood | +0.009 ± 0.010 (4 of 5) |
+| Points (default Score mix) | +0.30 ± 0.23 (3 of 5) |
 
 Picking the **Score mix** the same way did no better than keeping 60 / 25 / 15 (−0.007 ± 0.16 points) and swung between very different mixes, choosing a value weight of 0 in four of five weeks. That is why auto-pick leaves the mix to you.
 
 > [!NOTE]
-> Five test gameweeks is very little: only large effects are visible. The team-model result is encouraging (it helps the fixture measures and does not hurt Points) but it is not proof.
+> Five test gameweeks is very little: only large effects are visible, and none of these differences is larger than about 1.4 times its noise. The direction is encouraging (it is ahead on all four measures on average, and the picks settled on xG only with `prior_strength` 20 and `prior_scale` 0.20 from GW9) but it is not proof. An earlier run with a shorter list of team-model sets gave a similar picture on the fixture measures (xG difference +0.10 ± 0.06) and no clear difference on Points in either direction (−0.07 ± 0.12 there, +0.30 ± 0.23 here), so the conclusion does not hinge on the list.
 
 ### Clean-sheet calibration
 
@@ -199,7 +199,7 @@ Over 180 team-fixtures the model predicts 23% clean sheets and 28% happened; the
 
 ## More data: past seasons
 
-This season only has ten gameweeks, so `tools/multi_season.py` re-scores the same 17 team-model sets on three past seasons (2022-23, 2023-24, 2024-25: 112 gameweeks) from the public archive [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League). Only the three team-model measures can be compared: past seasons have no `defensive_contribution` points (introduced in 2025-26), and seasons before 2022-23 have no xG.
+This season only has ten gameweeks, so `tools/multi_season.py` re-scores the same 144 team-model sets on three past seasons (2022-23, 2023-24, 2024-25: 112 gameweeks) from the public archive [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League). Only the three team-model measures can be compared: past seasons have no `defensive_contribution` points (introduced in 2025-26), and seasons before 2022-23 have no xG.
 
 ```
 python tools/multi_season.py        # downloads about 5 MB per season into data/history/ (git-ignored)
@@ -208,8 +208,8 @@ python tools/multi_season.py        # downloads about 5 MB per season into data/
 | | Result over 112 gameweeks |
 |---|---|
 | **Model vs FPL's official difficulty** | rank correlation of ease with goal difference: model **+0.47** (default) vs official **+0.35**, a gap of **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks. Against xG difference: **+0.50** vs **+0.36**, gap **+0.14 ± 0.015**, ahead in 83 of 112. |
-| **Do the settings matter?** | Very little. On xG difference all 17 sets are within noise of each other except two. On goal difference 4 of 17 are tied with the best; the default ranks 13th, 0.025 behind (about 3 times the noise). |
-| **Is the ordering stable season to season?** | For goals likelihood, yes: rank correlations between seasons of +0.80 to +0.88. For goal difference, partly (+0.31 to +0.73). For xG difference, no (−0.63 to +0.14): that ordering is mostly noise. |
-| **Which direction wins consistently?** | On goals likelihood the best sets all use xG only with a strong pull toward FPL's ratings (`prior_strength` 10 to 20, `prior_scale` 0.20). The default's likelihood is −1.509 against −1.500 for the best: a small gap (0.6%) but about 3.5 times the noise. |
+| **Do the settings matter?** | Little. On xG difference 66 of 144 sets are tied with the best (the default is 21st, 0.004 behind, inside the noise). On goal difference 10 of 144 are tied with the best; the default ranks 45th, 0.025 behind (about 3 times the noise). |
+| **Is the ordering stable season to season?** | For goals likelihood, yes: rank correlations between seasons of +0.75 to +0.92. For goal difference, partly (+0.32 to +0.74). For xG difference, no (−0.35 to +0.71): that ordering is mostly noise. |
+| **Which direction wins consistently?** | On goals likelihood the best sets all use xG only with a strong pull toward FPL's ratings (`prior_strength` 10 to 20, `prior_scale` 0.20). The default's likelihood is −1.509 against −1.500 for the best (rank 37 of 144): a small gap (0.6%) but about 3.5 times the noise. This season's auto-pick, `xg_weight` 1.0 / `half_life_gw` 4 / `prior_strength` 20 / `prior_scale` 0.2, is the second best of all 144 on past-season goal difference. |
 
 Caveats: the archive stores each fixture's **final** difficulty rating (FPL publishes only the current one; this app now records it as it changes in `data/fdr_history.json`, so future comparisons use what was shown at the time); the official rating is deliberately coarse (2 to 5) and ties cost it some rank correlation, so read this as "clearly better at ranking fixtures", not as a precise margin; and only the team-model measures carry over, not Points.

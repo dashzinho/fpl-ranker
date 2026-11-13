@@ -161,7 +161,8 @@ class WeightSets(unittest.TestCase):
         for nm, x, _ in bt.PRESETS:
             self.assertIn(tuple(x[:4]), bt.TM_SETS, nm)
             self.assertIn(tuple(x[4:]), bt.MIX, nm)
-        self.assertEqual(bt._find({}, (0.65, 12, 5, 0.10, 60, 25, 15)), (0, bt.MIX.index((60, 25, 15))))
+        self.assertEqual(len(bt.TM_SETS), 144)
+        self.assertEqual(bt._find({}, (0.65, 12, 5, 0.10, 60, 25, 15)), (bt.TM_SETS.index((0.65, 12, 5, 0.10)), bt.MIX.index((60, 25, 15))))
         self.assertIsNone(bt._find({}, (0.5, 12, 5, 0.10, 60, 25, 15)))
 
     def test_overlap_aware_noise_is_never_below_the_plain_one(self):
