@@ -8,7 +8,9 @@ This page explains every layer of the FPL Rankings model, and the backtest that 
 
 - [The model](#the-model): [team strength](#1-team-strength) → [fixture difficulty](#2-fixture-difficulty) → [expected points](#3-expected-points) → [the Score](#4-the-score-outlook--perf--value)
 - [The backtest: weight sets](#the-backtest-weight-sets): [what a set is](#what-a-set-is) · [the four measures](#the-four-measures) · [Overall](#overall) · [rank, ties and noise](#rank-ties-and-noise)
-- [Auto-pick](#auto-pick)
+- [Auto-pick](#auto-pick): [would it have helped?](#would-auto-pick-have-helped-walk-forward)
+- [Clean-sheet calibration](#clean-sheet-calibration)
+- [More data: past seasons](#more-data-past-seasons)
 
 ## The model
 
@@ -20,8 +22,8 @@ flowchart LR
     B --> C["② Fixture difficulty<br/>expected goals for / against"]
     C --> D["③ Expected points<br/>per player, per fixture"]
     D --> E["④ Score<br/>outlook · perf · value"]
-    F["Weight-set backtest<br/>33,264 sets"] -. "picks team-model settings" .-> B
-    F -. "picks Score mix" .-> E
+    F["Weight-set backtest<br/>3,927 sets"] -. "auto-pick chooses" .-> B
+    F -. "informs (you choose)" .-> E
 ```
 
 ### 1. Team strength
@@ -62,7 +64,7 @@ The 1-5 colour is a **quantile bucket across all upcoming fixtures**, not a fixe
 This replaces FPL's official fixture difficulty rating (FDR), a coarse number that does not move with form. The backtest scores the model against the official rating on the same results.
 
 > [!NOTE]
-> At GW10 the model was slightly ahead of the official FDR (rank correlation of ease with goal difference **+0.415** against **+0.349**, pooled), but the gap was inside the noise. Treat it as a tie, not a win.
+> On this season's ten gameweeks the model's lead over the official FDR was too small to see (+0.415 vs +0.349). Over **112 gameweeks of the last three seasons** it is clear: ease ranks fixtures by the real goal difference at **+0.47 vs +0.35**, a gap of **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks. Details and caveats in [More data: past seasons](#more-data-past-seasons).
 
 ### 3. Expected points
 
@@ -84,9 +86,9 @@ The three weights (default **60 / 25 / 15**) are adjustable live with the slider
 ## The backtest: weight sets
 
 <div align="center">
-<img src="model-tab.jpg" alt="The Model tab: one table of weight sets with rank, value and noise" width="880">
+<img src="model-tab.jpg" alt="The Model tab: a plain-English verdict, then one table of weight sets with rank, value and noise" width="880">
 
-<sub>The Model tab: your active set pinned at the top with its rank on every measure, then the best sets and the named presets.</sub>
+<sub>The Model tab: a verdict at the top, your active set pinned with its rank on every measure, then the best sets and the named presets.</sub>
 </div>
 
 The question it answers: ***which settings would have worked best so far?*** It runs the pipeline again for every finished gameweek **using only data from before that gameweek**: team ratings fitted on earlier matches, player histories cut, season stats recomputed from the cut data, injury flags neutral (past news is not stored). It then scores the result on what actually happened. Nothing from the future leaks in.
@@ -95,15 +97,13 @@ The question it answers: ***which settings would have worked best so far?*** It 
 
 A set is seven numbers: the four team-model settings plus the three Score weights.
 
-| Setting | Values tested |
-|---|---|
-| `xg_weight` | 0, 0.65, 1.0 |
-| `half_life_gw` | 4, 12, 24, 100 |
-| `prior_strength` | 1, 5, 10, 20 |
-| `prior_scale` | 0.05, 0.10, 0.20 |
-| Score mix | outlook / perf / value in steps of 5 summing to 100 (231 mixes) |
+- **Team model:** 17 sets (`xg_weight`, `half_life_gw`, `prior_strength`, `prior_scale`): the seven named presets plus ten around the region that scored best. Values used: `xg_weight` 0 / 0.65 / 1.0, `half_life_gw` 4 / 12 / 24 / 100, `prior_strength` 1 / 5 / 10 / 20, `prior_scale` 0.05 / 0.10 / 0.20. Not every combination is run.
+- **Score mix:** outlook / perf / value in steps of 5 summing to 100 (231 mixes).
 
-**144** team-model sets × **231** Score mixes = **33,264 sets**, each backtested.
+**17** team-model sets × **231** Score mixes = **3,927 sets**, each backtested in about five seconds.
+
+> [!NOTE]
+> The first version ran a full 144-set grid of team models (33,264 sets, 40 seconds). Checking it showed that in the Points measure **87% of the variation came from the Score mix and only 7% from the team model**, and the default and the auto-picked team model produced almost the same player rankings (rank correlation 0.999; 8 of the top 8 defenders, 7 of 8 midfielders, 5 of 5 forwards and 3 of 3 goalkeepers identical). The team model mainly changes the fixture colours, so the list was shortened.
 
 ### The four measures
 
@@ -114,7 +114,10 @@ A set is seven numbers: the four team-model settings plus the three Score weight
 | **xG difference** | the same against the xG difference, which is less noisy than the score | team model only |
 | **Goals likelihood** | the average log-probability of the goals each team really scored under the set's expected goals (closer to 0 is better); rewards calibrated expected goals, not only a good ranking | team model only |
 
-The last three ignore the Score mix, so there are only **144 distinct scores** for them, each repeated for all 231 mixes. That is why those views rank "of 144" and Points ranks "of 33,264".
+The last three ignore the Score mix, so there are only **17 distinct scores** for them, each repeated for all 231 mixes. That is why those views rank "of 17" and Points ranks "of 3,927".
+
+> [!WARNING]
+> **Points ignores price.** It scores the top picks with no budget, so it always favours a low `value` weight. Use it to compare team models, not to decide how much price should matter. This is why auto-pick never changes your Score weights.
 
 ### Overall
 
@@ -132,7 +135,7 @@ Set B wins none of the four, but it is strong on all of them. Overall weights th
 ### Rank, ties and noise
 
 - **Rank** is the exact order of the averages on the selected measure (equal scores share a rank).
-- **Gap and noise.** For each finished gameweek, take (the best set's score) minus (this set's score). The **gap** is the average of those numbers; the **noise** is their standard error (spread divided by the square root of the number of gameweeks). It says how much the gap would wobble from one gameweek to the next. The page also shows the gap as a multiple of the noise.
+- **Gap and noise.** For each finished gameweek, take (the best set's score) minus (this set's score). The **gap** is the average of those numbers; the **noise** is their standard error (spread divided by the square root of the number of gameweeks). It says how much the gap would wobble from one gameweek to the next. The page also shows the gap as a multiple of the noise. For Points the noise allows for the 3-gameweek windows overlapping (Newey-West, lag 2), and is never smaller than the plain figure.
 
 | Gap compared with the noise | Label | Meaning |
 |---|---|---|
@@ -142,26 +145,71 @@ Set B wins none of the four, but it is strong on all of them. Overall weights th
 - **Stability:** do odd and even gameweeks rank the sets alike? Low means the ordering is mostly noise.
 
 > [!CAUTION]
-> Honest limits: one season, a handful of gameweeks, overlapping 3-gameweek windows (so the real noise is larger than shown), prices are today's, and the best of 33,264 sets on the same data is flattered. Treat a tie as a tie and re-check as the season goes on. xG-heavy team-model sets are partly judged on the quantity they fit.
+> Honest limits: one season, a handful of gameweeks, prices are today's, and the best of thousands of sets on the same data is flattered. Treat a tie as a tie and re-check as the season goes on. xG-heavy team-model sets are partly judged on the quantity they fit.
 
 ### Using it
 
-The page shows your **active set** with its rank on every measure, then the best sets on the selected measure and the named presets (Default, Trust FPL ratings, Results first, Recent form, Season-long, xG only, Goals only, Outlook only, Value tilt), with FPL's official difficulty as a reference row.
+At the top, a verdict in plain English says whether your team model is tied with the best on the three fixture measures and states your Score mix. Below it, the page shows your **active set** with its rank on every measure, then the best sets on the selected measure and the named presets (Default, Trust FPL ratings, Results first, Recent form, Season-long, xG only, Goals only, Outlook only, Value tilt), with FPL's official difficulty as a reference row.
 
 - **Use** on a row saves that whole set (team model and Score weights) to `prefs.local.json` and rebuilds, so difficulty colours, projections, Rankings and squad picks all change.
 - **Save my sliders as default** saves just the Score weights.
 - Both need `start.bat` (the page is served locally).
 
-`python fpl.py --backtest` prints the same in the terminal: projection accuracy, the model-vs-official-FDR comparison (including an attack/defence split and mean goal difference per difficulty bucket) and the best sets on every measure. Results are cached and recomputed only when a gameweek finishes or the model code changes.
+`python fpl.py --backtest` prints the same in the terminal: projection accuracy, clean-sheet calibration, the model-vs-official-FDR comparison (including an attack/defence split and mean goal difference per difficulty bucket), the best sets on every measure and the walk-forward test. Results are cached and recomputed only when a gameweek finishes or the model code changes.
 
 ## Auto-pick
 
-When a gameweek has fully finished (all matches done, FPL's `finished` flag), the first update after it re-runs the backtest and, if **auto-pick** is on, adopts the best-**Overall** set as the new default. It runs **once per finished gameweek** (recorded in `data/auto_pick.json`), never in the middle of a gameweek.
+When a gameweek has fully finished (all matches done, FPL's `finished` flag), the first update after it re-runs the backtest and, if **auto-pick** is on, adopts the best **team-model** set as the new default. It runs **once per finished gameweek** (recorded in `data/auto_pick.json`), never in the middle of a gameweek.
+
+- **What it changes:** only the four team-model settings. Your Score weights are never changed automatically (see "Points ignores price" above, and the walk-forward test below).
+- **What "best" means:** the highest mean percentile of the four measures among the team-model sets, with Points averaged over every Score mix so the answer does not depend on your weights.
 
 | Control | Behaviour |
 |---|---|
 | **Auto-pick switch** | On by default. Choosing a set or saving your sliders yourself turns it off, so your choice is never overwritten. The switch on the Model tab turns it back on (and picks again at the next run). Or set `"auto_pick": false` in `prefs.local.json`. |
-| **Pick best now** | Adopts the best set once, right away, even with auto-pick off, and leaves the switch alone. |
+| **Pick best now** | Adopts the best team model once, right away, even with auto-pick off, and leaves the switch alone. |
+| **Revert last pick** | Puts back the team-model values the last pick replaced and turns auto-pick off. |
+| **History** | Every pick is logged with the values it replaced (last five shown on the page, last twenty kept). |
+
+### Would auto-pick have helped? (walk-forward)
+
+The fair test: for each test gameweek, choose using **only earlier gameweeks**, then score on that gameweek and compare with simply keeping the default. On this season's data (test gameweeks GW6 to GW10):
+
+| Team model, scored on the next gameweek | Auto-pick minus default |
+|---|---|
+| xG difference | **+0.103** ± 0.056 (better in 4 of 5) |
+| Goal difference | +0.100 ± 0.102 (3 of 5) |
+| Goals likelihood | +0.009 ± 0.009 (3 of 5) |
+| Points (default Score mix) | −0.07 ± 0.12 (1 of 5): no clear difference |
+
+Picking the **Score mix** the same way did no better than keeping 60 / 25 / 15 (−0.007 ± 0.16 points) and swung between very different mixes, choosing a value weight of 0 in four of five weeks. That is why auto-pick leaves the mix to you.
 
 > [!NOTE]
-> With this much choice and this little data, the best set can change from week to week.
+> Five test gameweeks is very little: only large effects are visible. The team-model result is encouraging (it helps the fixture measures and does not hurt Points) but it is not proof.
+
+### Clean-sheet calibration
+
+Is the model's clean-sheet chance honest? For every finished fixture, P(clean sheet) = `exp(-opponent's expected goals)` under the model fitted on earlier matches, against whether the team really kept one:
+
+| Predicted | 13% | 18% | 22% | 26% | 34% |
+|---|---|---|---|---|---|
+| **Actual** | 8% | 19% | 36% | 36% | 42% |
+
+Over 180 team-fixtures the model predicts 23% clean sheets and 28% happened; the Brier score is 0.1955 against 0.2031 for always guessing the average, so it has some skill. The gap is about 1.7 times what 180 fixtures can show by chance, so it does **not** yet justify changing the goals model (for example with a Dixon-Coles correction). Re-check as more gameweeks are played.
+
+## More data: past seasons
+
+This season only has ten gameweeks, so `tools/multi_season.py` re-scores the same 17 team-model sets on three past seasons (2022-23, 2023-24, 2024-25: 112 gameweeks) from the public archive [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League). Only the three team-model measures can be compared: past seasons have no `defensive_contribution` points (introduced in 2025-26), and seasons before 2022-23 have no xG.
+
+```
+python tools/multi_season.py        # downloads about 5 MB per season into data/history/ (git-ignored)
+```
+
+| | Result over 112 gameweeks |
+|---|---|
+| **Model vs FPL's official difficulty** | rank correlation of ease with goal difference: model **+0.47** (default) vs official **+0.35**, a gap of **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks. Against xG difference: **+0.50** vs **+0.36**, gap **+0.14 ± 0.015**, ahead in 83 of 112. |
+| **Do the settings matter?** | Very little. On xG difference all 17 sets are within noise of each other except two. On goal difference 4 of 17 are tied with the best; the default ranks 13th, 0.025 behind (about 3 times the noise). |
+| **Is the ordering stable season to season?** | For goals likelihood, yes: rank correlations between seasons of +0.80 to +0.88. For goal difference, partly (+0.31 to +0.73). For xG difference, no (−0.63 to +0.14): that ordering is mostly noise. |
+| **Which direction wins consistently?** | On goals likelihood the best sets all use xG only with a strong pull toward FPL's ratings (`prior_strength` 10 to 20, `prior_scale` 0.20). The default's likelihood is −1.509 against −1.500 for the best: a small gap (0.6%) but about 3.5 times the noise. |
+
+Caveats: the archive stores each fixture's **final** difficulty rating (FPL publishes only the current one; this app now records it as it changes in `data/fdr_history.json`, so future comparisons use what was shown at the time); the official rating is deliberately coarse (2 to 5) and ties cost it some rank correlation, so read this as "clearly better at ranking fixtures", not as a precise margin; and only the team-model measures carry over, not Points.

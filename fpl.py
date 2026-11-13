@@ -177,9 +177,22 @@ def _run(a):
         fd.sync_players(boot, log=log)
     hist = fd.load_histories(boot)
     my = None
-    if prefs.get("fpl_team_id") and not a.offline:
-        cur = next((e["id"] for e in boot["events"] if e["is_current"]), 1)
-        my = fd.fetch_my_team(prefs["fpl_team_id"], cur, boot)
+    tid = prefs.get("fpl_team_id")
+    if tid:
+        if not a.offline:
+            cur = next((e["id"] for e in boot["events"] if e["is_current"]), 1)
+            my = fd.fetch_my_team(tid, cur, boot)
+            if my and "error" not in my:
+                fd.cache_my_team(tid, my)
+        if a.offline or not my or "error" in my:       # offline, or the API failed: fall back to the last good squad
+            stale = fd.cached_my_team(tid)
+            if stale:
+                my = stale
+                log(f"  using your squad from {stale['stale']} (could not fetch a fresh one)")
+    try:
+        fd.update_fdr_history(fixtures, next((e["id"] for e in boot["events"] if e["is_next"]), 1))
+    except Exception as e:                           # noqa: BLE001
+        log(f"  FDR history skipped: {e}")
     # the weight-set backtest comes first (cached per finished gameweek, independent of the chosen set); auto-pick may
     # then change the weights, which the accuracy backtest below depends on
     try:

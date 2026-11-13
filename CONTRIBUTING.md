@@ -22,7 +22,7 @@ Open an issue first so we can agree on the idea before you write code. Two thing
 git clone https://github.com/dashzinho/fpl-ranker.git
 cd fpl-ranker
 python fpl.py --open          # first run installs numpy + scipy and builds the page
-python -m unittest discover -s tests
+python -m unittest discover -s tests      # also runs in CI on every push and pull request
 ```
 
 No API key is needed. The first build fetches about 2 MB plus one request per player; later runs only re-fetch what changed.
@@ -31,7 +31,7 @@ No API key is needed. The first build fetches about 2 MB plus one request per pl
 
 - Keep each PR focused, and add or update a test in `tests/test_core.py` for logic you change.
 - Run `python -m unittest discover -s tests` and make sure it passes.
-- **Changes to the model need evidence.** If you change the team-strength model, expected points or the Score, run `python fpl.py --backtest` before and after and include both results in the PR. A change that is inside the noise should say so. See [docs/MODEL.md](docs/MODEL.md) for how to read the backtest.
+- **Changes to the model need evidence.** If you change the team-strength model, expected points or the Score, run `python fpl.py --backtest` before and after and include both results in the PR. A change that is inside the noise should say so. For team-model changes, also run `python tools/multi_season.py` (three past seasons, 112 gameweeks) because one season is too little to tell settings apart. See [docs/MODEL.md](docs/MODEL.md) for how to read the results.
 - The page is a single self-contained HTML file (`app/board_template.html`). Please don't add a build step, a framework or external network requests to it.
 - Don't commit anything from `data/`, `output/` or `prefs.local.json` (they are git-ignored for a reason).
 

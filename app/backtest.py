@@ -6,8 +6,9 @@ before g, player histories cut at g-1, and the season-performance inputs recompu
 `perf_scores` and the page's own Score formula are used.
 
 Two outputs:
-  * data/backtest.json   accuracy of the single-gameweek projections by position, against two naive baselines, plus the
-                         comparison of the team model's fixture difficulty with FPL's official rating (python fpl.py --backtest)
+  * data/backtest.json   accuracy of the single-gameweek projections by position, against two naive baselines, the
+                         comparison of the team model's fixture difficulty with FPL's official rating, and the clean-sheet
+                         calibration (python fpl.py --backtest)
   * data/backtest_sets.* ONE table of weight sets. A set = the four team-model weights (xG share, half-life, prior
                          strength, prior scale) + the Score weights (outlook / perf / value in steps of 5). Every
                          combination is scored on four measures, each refitted per gameweek on earlier data only:
@@ -15,11 +16,13 @@ Two outputs:
                            gd   rank correlation of the model's fixture ease with the real goal difference
                            xgd  the same with the xG difference
                            ll   Poisson log-likelihood of the goals each team scored
-                         plus an overall score (mean percentile across the four) that auto-pick uses. Each measure has
-                         a paired standard error versus its best set, so near-ties show as ties instead of a crown.
+                         plus an overall score (mean percentile across the four). Each measure has a paired standard
+                         error versus its best set (overlap-aware for Points), so near-ties show as ties, not a crown.
+                         It also holds the walk-forward test of auto-pick (choose on earlier gameweeks, score on the next)
+                         and `best_team`, the team-model-only ranking that auto-pick uses (never the Score weights).
 
-Honest limits: one season, few gameweeks, overlapping 3-GW windows (the standard errors are optimistic), prices are
-today's, and picking the best of ~30k combinations on this data flatters the winner. Re-run as the season progresses.
+Honest limits: one season, few gameweeks, prices are
+today's, and picking the best of thousands of combinations on this data flatters the winner. Re-run as the season progresses.
 Run:  python fpl.py --backtest      (the page also refreshes it automatically when a gameweek finishes)
 """
 import copy, hashlib, itertools, json, math, os, time, warnings
@@ -59,15 +62,24 @@ def _cut_stats(p, rows):
     p["xgi90"] = sum(float(r.get("expected_goal_involvements") or 0) for r in rows) / n90 if n90 else 0.0
     p["bn90"] = sum(r.get("bonus") or 0 for r in rows) / n90 if n90 else 0.0
 
+def _fdr_hist():
+    try:
+        return json.load(open(os.path.join(DATA, "fdr_history.json"), encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        return {}
+
+
 def _fdr_records(fixtures, xg, model, g):
     """One record per (finished fixture in GW g, team): the model's pre-GW expectation, FPL's official difficulty
     and what happened. Official FDR is today's value (FPL rarely changes it mid-season), the model is as-of before g."""
     out = []
+    hist_fdr = _fdr_hist()
     for f in fixtures:
         if f["event"] != g or not f["finished"] or f["team_h_score"] is None:
             continue
-        for t, o, home, gf, ga, d in ((f["team_h"], f["team_a"], True, f["team_h_score"], f["team_a_score"], f["team_h_difficulty"]),
-                                      (f["team_a"], f["team_h"], False, f["team_a_score"], f["team_h_score"], f["team_a_difficulty"])):
+        dh, da = fd.fdr_as_of(hist_fdr, f, g)
+        for t, o, home, gf, ga, d in ((f["team_h"], f["team_a"], True, f["team_h_score"], f["team_a_score"], dh),
+                                      (f["team_a"], f["team_h"], False, f["team_a_score"], f["team_h_score"], da)):
             lt, lo = model["lam"](t, o, home), model["lam"](o, t, not home)
             xf, xa = xg.get((f["id"], t)), xg.get((f["id"], o))
             out.append({"gw": g, "off": -float(d), "mod": float(np.log(lt / lo)), "lt": lt, "lo": lo, "gd": float(gf - ga),
@@ -124,9 +136,16 @@ def _fdr_summary(recs, gws):
 
 
 # ---------------------------------------------------------------- weight sets (team model + score weights)
-TM_GRID = {"xg_weight": [0.0, 0.65, 1.0], "half_life_gw": [4, 12, 24, 100],
-           "prior_strength": [1, 5, 10, 20], "prior_scale": [0.05, 0.10, 0.20]}
-TM_KEYS = tuple(TM_GRID)
+TM_KEYS = ("xg_weight", "half_life_gw", "prior_strength", "prior_scale")
+# The team-model sets that are backtested: the named presets first, then a few around the region that scored best. The
+# review of the first 144-set grid showed the team model barely changes which players are picked (87% of the variation in
+# Points came from the Score mix, 7% from the team model), so a short list gives the same answer in seconds.
+TM_SETS = [(0.65, 12, 5, 0.10), (0.65, 12, 20, 0.20), (0.65, 12, 1, 0.10), (0.65, 4, 5, 0.10), (0.65, 100, 5, 0.10),
+           (1.0, 12, 5, 0.10), (0.0, 12, 5, 0.10),
+           (0.65, 12, 10, 0.20), (1.0, 24, 20, 0.20), (1.0, 4, 10, 0.20), (0.65, 24, 10, 0.20), (0.65, 4, 10, 0.20),
+           (1.0, 12, 20, 0.20), (1.0, 100, 20, 0.20), (0.65, 12, 10, 0.10), (0.65, 12, 20, 0.10), (0.0, 12, 20, 0.20)]
+TM_GRID = {k: sorted({t[i] for t in TM_SETS}) for i, k in enumerate(TM_KEYS)}      # the values used, for display
+WF_START = 6                                          # first gameweek of the walk-forward test (needs a few gameweeks of history)
 TM_DEFAULT = {"xg_weight": 0.65, "half_life_gw": 12, "prior_strength": 5.0, "prior_scale": 0.10}
 W_DEFAULT = (60, 25, 15)
 SET_KEYS = TM_KEYS + ("wo", "wp", "wv")
@@ -168,6 +187,19 @@ def _se(diff, axis):
         return np.where(n > 2, sd / np.sqrt(np.maximum(n, 1)), 0.0)
 
 
+def _se_hac(diff, lag=2):
+    """Noise of the mean paired difference when neighbouring gameweeks overlap (3-GW windows share 2 gameweeks):
+    Newey-West with lag 2, never smaller than the plain standard error. diff has gameweeks on the last axis."""
+    n = diff.shape[-1]
+    d = diff - diff.mean(axis=-1, keepdims=True)
+    g0 = (d * d).sum(-1) / n
+    v = g0.copy()
+    for l in range(1, lag + 1):
+        v = v + 2 * (1 - l / (lag + 1)) * (d[..., l:] * d[..., :-l]).sum(-1) / n
+    plain = np.sqrt(g0 * n / max(n - 1, 1) / n)
+    return np.maximum(plain, np.sqrt(np.maximum(v, 0) / n))
+
+
 def _nanmean(a, axis):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -182,7 +214,7 @@ def compute_sets(boot, fixtures, hist, prefs, log=print):
     xg_all = fm.team_match_table(boot, fixtures, hist)
     actual = {pid: {r["round"]: r["total_points"] for r in rows} for pid, rows in hist.items()}
     price = {e["id"]: e["now_cost"] / 10.0 for e in boot["elements"]}
-    sets = list(itertools.product(*TM_GRID.values()))
+    sets = list(TM_SETS)
     nS, nM = len(sets), len(MIX)
     gws = list(range(1, last + 1))
     pgws = [g for g in gws if g >= FIRST_GW]
@@ -192,6 +224,7 @@ def compute_sets(boot, fixtures, hist, prefs, log=print):
     off = {"gd": np.full(len(gws), np.nan), "xgd": np.full(len(gws), np.nan)}
     lg = np.vectorize(math.lgamma)
     n_obs = 0
+    fdr_hist = _fdr_hist()
     log(f"  backtesting {nS * nM:,} weight sets ({nS} team-model sets x {nM} score mixes) over GW1-GW{last}...")
     for gi, g in enumerate(gws):
         rows = []                                      # (team, opp, home, gf, ga, xg diff, official difficulty)
@@ -200,8 +233,9 @@ def compute_sets(boot, fixtures, hist, prefs, log=print):
                 continue
             xh, xa = xg_all.get((f["id"], f["team_h"])), xg_all.get((f["id"], f["team_a"]))
             ok = xh is not None and xa is not None
-            for t, o, home, gf, ga, d in ((f["team_h"], f["team_a"], True, f["team_h_score"], f["team_a_score"], f["team_h_difficulty"]),
-                                          (f["team_a"], f["team_h"], False, f["team_a_score"], f["team_h_score"], f["team_a_difficulty"])):
+            dh, da = fd.fdr_as_of(fdr_hist, f, g)
+            for t, o, home, gf, ga, d in ((f["team_h"], f["team_a"], True, f["team_h_score"], f["team_a_score"], dh),
+                                          (f["team_a"], f["team_h"], False, f["team_a_score"], f["team_h_score"], da)):
                 x = (xh - xa if home else xa - xh) if ok else float(gf - ga)
                 rows.append((t, o, home, float(gf), float(ga), x, float(d)))
         have_team = len(rows) >= 10
@@ -272,7 +306,7 @@ def compute_sets(boot, fixtures, hist, prefs, log=print):
         si, mi = np.unravel_index(np.argmax(A[k]), A[k].shape)
         best[name] = (int(si), int(mi))
         if name == "pts":
-            SE[k] = _se(P[si, mi][None, None, :] - P, 2)
+            SE[k] = _se_hac(P[si, mi][None, None, :] - P)
         else:
             SE[k] = bc(_se(T[name][si][None, :] - T[name], 1))
     GAP = np.stack([A[k].max() - A[k] for k in range(4)])
@@ -292,11 +326,60 @@ def compute_sets(boot, fixtures, hist, prefs, log=print):
         d = T[name][si] - off[name]
         official[name] = {"v": round(float(np.nanmean(off[name])), 4), "gap": round(float(np.nanmean(d)), 4), "se": round(float(_se(d, 0)), 4)}
     x_of = lambda si, mi: [*[float(v) for v in sets[si]], *MIX[mi]]                          # noqa: E731
+    # auto-pick adopts only the team model: best mean percentile of the four measures among the team-model sets, with
+    # Points averaged over every Score mix (so it does not depend on, or push, the user's Score weights)
+    team_score = _pct_rank(P.mean(axis=(1, 2))) + _pct_rank(np.nanmean(T["gd"], 1)) + _pct_rank(np.nanmean(T["xgd"], 1)) + _pct_rank(np.nanmean(T["ll"], 1))
+    best_team = [float(v) for v in sets[int(np.argmax(team_score))]]
+    wf = _walkforward(T, P, gws, pgws)
     meta = {"key": _sets_key(last, prefs), "finished": last, "gws": [1, last], "pgws": [pgws[0], last], "computed": time.strftime("%d %b %H:%M"),
             "seconds": round(time.time() - t0), "n_sets": nS * nM, "n_team": nS, "n_mix": nM, "n_obs": n_obs, "grid": TM_GRID, "keys": list(SET_KEYS),
-            "best": {k: x_of(*v) for k, v in best.items()}, "stability": stab, "official": official,
+            "best": {k: x_of(*v) for k, v in best.items()}, "best_team": best_team, "walkforward": wf, "stability": stab, "official": official,
+            "team_sets": [list(t) for t in TM_SETS],
             "n_tied": {name: int(TIE[k].sum()) for k, name in enumerate(MEAS)}}
-    return meta, {"A": A.astype(np.float32), "GAP": GAP.astype(np.float32), "SE": SE.astype(np.float32), "TIE": TIE, "OV": OV.astype(np.float32)}
+    return meta, {"A": A.astype(np.float32), "GAP": GAP.astype(np.float32), "SE": SE.astype(np.float32), "TIE": TIE, "OV": OV.astype(np.float32),
+                  "P": P.astype(np.float32), "Tgd": T["gd"].astype(np.float32), "Txgd": T["xgd"].astype(np.float32), "Tll": T["ll"].astype(np.float32)}
+
+
+def _pct_rank(v):
+    return (rankdata(v) - 1) / max(len(v) - 1, 1) * 100
+
+
+def _walkforward(T, P, gws, pgws):
+    """Would auto-pick have helped? For each test gameweek g, choose using ONLY earlier gameweeks, then score on g.
+    team: the best team-model set by the mean percentile of the four measures (points averaged over all Score mixes),
+    compared with just keeping the default set. mix: the best Score mix (by Points, default team model), compared with
+    keeping 60/25/15. 'oracle' is the best in hindsight on g, i.e. the ceiling no rule can reach."""
+    nS, nM, nP = P.shape
+    s0 = TM_SETS.index(tuple(TM_DEFAULT[k] for k in TM_KEYS)); m0 = MIX.index(W_DEFAULT)
+    tests = [g for g in gws if g >= WF_START]
+    if not tests:
+        return None
+    team = {"gws": tests, "picked": {k: [] for k in MEAS}, "default": {k: [] for k in MEAS}, "oracle": {k: [] for k in MEAS}, "picks": []}
+    mix = {"gws": tests, "picked": [], "default": [], "oracle": [], "picks": []}
+    for g in tests:
+        gi, pi = g - 1, g - pgws[0]                    # column of gameweek g in the team and Points arrays
+        hist_t, hist_p = slice(0, gi), slice(0, pi)    # strictly earlier gameweeks
+        meas = {"pts": P[:, :, hist_p].mean(axis=(1, 2)), "gd": T["gd"][:, hist_t].mean(1), "xgd": T["xgd"][:, hist_t].mean(1), "ll": T["ll"][:, hist_t].mean(1)}
+        score = sum(_pct_rank(v) for v in meas.values())
+        pick = int(np.argmax(score)); team["picks"].append(pick)
+        oos = {"pts": P[:, m0, pi], "gd": T["gd"][:, gi], "xgd": T["xgd"][:, gi], "ll": T["ll"][:, gi]}   # Points at the default Score mix
+        for k in MEAS:
+            team["picked"][k].append(float(oos[k][pick])); team["default"][k].append(float(oos[k][s0])); team["oracle"][k].append(float(oos[k].max()))
+        mp = int(np.argmax(P[s0, :, hist_p].mean(axis=1))); mix["picks"].append(list(MIX[mp]))
+        mix["picked"].append(float(P[s0, mp, pi])); mix["default"].append(float(P[s0, m0, pi])); mix["oracle"].append(float(P[s0, :, pi].max()))
+
+    def diff(a, b):
+        d = np.array(a) - np.array(b)
+        return {"mean": round(float(d.mean()), 4), "se": round(float(_se(d, 0)), 4), "wins": int((d > 0).sum()), "n": len(d)}
+    out = {"gws": tests, "first": WF_START,
+           "team": {"changes": int(sum(1 for a, b in zip(team["picks"], team["picks"][1:]) if a != b)), "picks": [list(TM_SETS[i]) for i in team["picks"]],
+                    "picked": {k: round(float(np.mean(v)), 4) for k, v in team["picked"].items()}, "default": {k: round(float(np.mean(v)), 4) for k, v in team["default"].items()},
+                    "oracle": {k: round(float(np.mean(v)), 4) for k, v in team["oracle"].items()},
+                    "diff": {k: diff(team["picked"][k], team["default"][k]) for k in MEAS}},
+           "mix": {"changes": int(sum(1 for a, b in zip(mix["picks"], mix["picks"][1:]) if a != b)), "picks": mix["picks"],
+                   "picked": round(float(np.mean(mix["picked"])), 4), "default": round(float(np.mean(mix["default"])), 4), "oracle": round(float(np.mean(mix["oracle"])), 4),
+                   "diff": diff(mix["picked"], mix["default"]), "value_weights": [m[2] for m in mix["picks"]]}}
+    return out
 
 
 def sets_get(boot, fixtures, hist, prefs, force=False, log=print):
@@ -319,16 +402,10 @@ def sets_get(boot, fixtures, hist, prefs, force=False, log=print):
 
 
 def _find(meta, x):
-    """Index (set, mix) of a 7-value set on the tested grid, or None."""
-    g = meta["grid"]
+    """Index (set, mix) of a 7-value set among the tested ones, or None."""
     try:
-        si = 0
-        for k, key in enumerate(TM_KEYS):
-            vals = g[key]
-            j = next(i for i, v in enumerate(vals) if abs(v - x[k]) < 1e-9)
-            si = si * len(vals) + j
-        mi = MIX.index((int(x[4]), int(x[5]), int(x[6])))
-        return si, mi
+        si = next(i for i, t in enumerate(TM_SETS) if all(abs(a - b) < 1e-9 for a, b in zip(t, x[:4])))
+        return si, MIX.index((int(x[4]), int(x[5]), int(x[6])))
     except (StopIteration, ValueError):
         return None
 
@@ -344,7 +421,7 @@ def sets_for_page(meta, prefs, topn=8):
         return None
     z = np.load(SETS_NPZ)
     A, GAP, SE, TIE, OV = z["A"], z["GAP"], z["SE"], z["TIE"], z["OV"]
-    sets = list(itertools.product(*TM_GRID.values()))
+    sets = list(TM_SETS)
     chosen = {}                                        # (si, mi) -> row extras
 
     def add(idx, **kw):
@@ -381,7 +458,7 @@ def sets_for_page(meta, prefs, topn=8):
         add(cur, cur=True)
     bo = _find(meta, meta["best"]["ov"])
     if bo:
-        add(bo, nm=chosen.get(bo, {}).get("nm") or "Best overall on this data", ds=chosen.get(bo, {}).get("ds") or "Highest mean percentile across the four measures: what auto-pick chooses.")
+        add(bo, nm=chosen.get(bo, {}).get("nm") or "Best overall on this data", ds=chosen.get(bo, {}).get("ds") or "Highest mean percentile across the four measures over all 7 numbers. Auto-pick does not simply copy this row: it uses its own team-model-only ranking and never touches the Score weights.")
     out = []
     for (si, mi), e in chosen.items():
         out.append({"x": [*[float(v) for v in sets[si]], *MIX[mi]], "v": [round(float(A[k][si, mi]), 4) for k in range(4)],
@@ -390,9 +467,34 @@ def sets_for_page(meta, prefs, topn=8):
                     "rk": [int((OV > OV[si, mi]).sum()) + 1, int((A[0] > A[0][si, mi]).sum()) + 1]
                           + [int((A[k][:, 0] > A[k][si, 0]).sum()) + 1 for k in (1, 2, 3)],       # team-only measures: rank among team sets
                     "cur": e["cur"], "pre": e["pre"], "nm": e["nm"], "ds": e["ds"], "top": e["top"]})
-    return {**{k: meta[k] for k in ("finished", "gws", "pgws", "computed", "n_sets", "n_team", "n_mix", "n_obs", "grid", "best", "stability", "official")},
+    return {**{k: meta[k] for k in ("finished", "gws", "pgws", "computed", "n_sets", "n_team", "n_mix", "n_obs", "grid", "best", "best_team", "walkforward", "stability", "official")},
             "n_tied": {k: (v if k == "pts" else v // meta["n_mix"]) for k, v in meta["n_tied"].items()},        # team-only measures count team sets
             "ov_best": round(float(OV.max()), 1), "rows": out, "on_grid": cur is not None}
+
+
+def _cs_calibration(boot, fixtures, xg_all, prefs, last):
+    """Is the model's clean-sheet probability honest? For every finished fixture, P(clean sheet) = exp(-opponent's
+    expected goals) under the model fitted on earlier matches, against whether the team really kept one. Five equal-count
+    bins, plus the Brier score against always predicting the base rate. This is the check to run before changing the
+    goals model (for example a Dixon-Coles correction): it only matters if this is visibly off."""
+    pred, act = [], []
+    for g in range(2, last + 1):
+        fx = [dict(f, finished=False if (f["event"] or 0) >= g else f["finished"]) for f in fixtures]
+        m = fm.fit_teams(boot, fx, xg_all, g - 1, prefs)
+        for f in fixtures:
+            if f["event"] != g or not f["finished"] or f["team_h_score"] is None:
+                continue
+            for t, o, home, ga in ((f["team_h"], f["team_a"], True, f["team_a_score"]), (f["team_a"], f["team_h"], False, f["team_h_score"])):
+                pred.append(math.exp(-m["lam"](o, t, not home))); act.append(1.0 if ga == 0 else 0.0)
+    if len(pred) < 100:
+        return None
+    pred, act = np.array(pred), np.array(act)
+    order = np.argsort(pred); bins = []
+    for chunk in np.array_split(order, 5):
+        bins.append({"n": int(len(chunk)), "pred": round(float(pred[chunk].mean()), 3), "act": round(float(act[chunk].mean()), 3)})
+    base = float(act.mean())
+    return {"n": int(len(pred)), "bins": bins, "brier": round(float(np.mean((pred - act) ** 2)), 4),
+            "brier_base": round(float(np.mean((base - act) ** 2)), 4), "mean_pred": round(float(pred.mean()), 3), "mean_act": round(base, 3)}
 
 
 def model_key(last, prefs):
@@ -456,7 +558,7 @@ def compute(boot, fixtures, hist, prefs):
             per_gw.append({"gw": g, "rho": round(float(spearmanr([x["xp1"] for x in r], [x["y1"] for x in r])[0]), 3)})
     bias = round(float(np.mean([x["xp1"] - x["y1"] for x in recs])), 2) if recs else 0.0
     return {"key": model_key(last, prefs), "finished": last, "gws": [gws[0], gws[-1]], "computed": time.strftime("%d %b %H:%M"),
-            "n": len(recs), "fdr": _fdr_run(boot, fixtures, xg_all, prefs, last), "accuracy": acc, "per_gw": per_gw, "bias": bias}
+            "n": len(recs), "fdr": _fdr_run(boot, fixtures, xg_all, prefs, last), "cs": _cs_calibration(boot, fixtures, xg_all, prefs, last), "accuracy": acc, "per_gw": per_gw, "bias": bias}
 
 
 def get(boot, fixtures, hist, prefs, force=False):
@@ -496,6 +598,10 @@ def main(root, prefs):
                   f"  diff {t['gw_diff']:+.3f} (se {t['gw_se']:.3f}), model better in {t['gw_model_wins']}/{t['gw_n']} GWs")
         print(f"   attack: model {fd_['attack_rho']:+.3f} vs official {fd_['official_gf_rho']:+.3f} (goals scored); defence: model {fd_['defence_rho']:+.3f} vs official {fd_['official_ga_rho']:+.3f} (goals conceded)")
         print("   Official FDR is today's value, not as-of-then; the model is strictly pre-gameweek.\n")
+    cs = r.get("cs")
+    if cs:
+        print(f"2b) Clean-sheet calibration ({cs['n']} team-fixtures): predicted vs actual clean-sheet rate by fifth, lowest to highest chance")
+        print("    " + "   ".join(f"{b['pred']:.2f}->{b['act']:.2f}" for b in cs["bins"]) + f"   | Brier {cs['brier']} vs {cs['brier_base']} always predicting the base rate ({cs['mean_act']})\n")
     meta = sets_get(boot, fixtures, hist, prefs, force=True)
     if meta:
         pg = sets_for_page(meta, prefs)
@@ -514,5 +620,13 @@ def main(root, prefs):
         for k, v in meta["official"].items():
             print(f"   official FDR on {names[k]}: {v['v']:+.4f}")
         print(f"   odd/even gameweek stability: {meta['stability']}")
+        print(f"   auto-pick would choose the team model {meta['best_team']}")
+        wf = meta.get("walkforward")
+        if wf:
+            t, m = wf["team"], wf["mix"]
+            print(f"\n4) Walk-forward: pick using only earlier gameweeks, score on the next (GW{wf['gws'][0]}-GW{wf['gws'][-1]}, {len(wf['gws'])} test gameweeks)")
+            print(f"   team model, picked vs default vs hindsight-best:  " + "  ".join(f"{k} {t['picked'][k]:+.3f}/{t['default'][k]:+.3f}/{t['oracle'][k]:+.3f}" for k in MEAS))
+            print(f"   picked minus default: " + "  ".join(f"{k} {t['diff'][k]['mean']:+.3f} (se {t['diff'][k]['se']:.3f}, better in {t['diff'][k]['wins']}/{t['diff'][k]['n']})" for k in MEAS) + f"; changed pick {t['changes']} times")
+            print(f"   Score mix by Points, picked vs default vs hindsight-best: {m['picked']:.2f} / {m['default']:.2f} / {m['oracle']:.2f};  picked minus default {m['diff']['mean']:+.3f} (se {m['diff']['se']:.3f}, better in {m['diff']['wins']}/{m['diff']['n']}); value weights picked: {m['value_weights']}")
     print("\nCaveat: one season, few gameweeks, overlapping windows, today's prices; the best of thousands of sets is flattered by")
     print("being picked on the same data. Treat a tie as a tie.")
