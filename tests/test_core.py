@@ -272,6 +272,34 @@ class AutoPick(unittest.TestCase):
             finally:
                 ap.FILE = old
 
+    def test_revert_never_overwrites_a_later_manual_change_or_repeats(self):
+        import autopick as ap
+        old = ap.FILE
+        with tempfile.TemporaryDirectory() as d:
+            ap.FILE = os.path.join(d, "auto_pick.json")
+            json.dump({"fpl_team_id": 1}, open(os.path.join(d, "prefs.local.json"), "w"))
+            try:
+                prefs = {"auto_pick": True}
+                self.assertTrue(ap.apply(d, prefs, self.META, lambda *_: None))
+                self.assertTrue(ap.status(prefs)["can_revert"])
+                fx.save_model_set(d, {"xg_weight": 0.65, "half_life_gw": 7, "prior_strength": 5, "prior_scale": 0.1})   # a manual change
+                with self.assertRaises(ValueError):                                      # must not undo the pick over it
+                    ap.revert(d)
+                self.assertEqual(json.load(open(os.path.join(d, "prefs.local.json")))["half_life_gw"], 7)
+                self.assertFalse(ap.status(json.load(open(os.path.join(d, "prefs.local.json"))))["can_revert"])
+            finally:
+                ap.FILE = old
+        with tempfile.TemporaryDirectory() as d:
+            ap.FILE = os.path.join(d, "auto_pick.json")
+            json.dump({"fpl_team_id": 1}, open(os.path.join(d, "prefs.local.json"), "w"))
+            try:
+                ap.apply(d, {"auto_pick": True}, self.META, lambda *_: None)
+                ap.revert(d)
+                with self.assertRaises(ValueError):                                      # already reverted: nothing more to undo
+                    ap.revert(d)
+            finally:
+                ap.FILE = old
+
     def test_revert_with_nothing_to_revert_raises(self):
         import autopick as ap
         old = ap.FILE

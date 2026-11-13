@@ -108,7 +108,7 @@ flowchart LR
 4. **The Score.** A weighted blend of three within-position percentiles: **outlook** (projected points), **perf** (season performance) and **value** (points per £). Default weights **60 / 25 / 15**.
 
 > [!NOTE]
-> On this season's ten gameweeks the lead over FPL's official difficulty was too small to see. Over **112 gameweeks of the last three seasons** it is clear: the model ranks fixtures by the real goal difference at **+0.47 vs +0.35** (gap **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks). See [More data: past seasons](docs/MODEL.md#more-data-past-seasons).
+> On this season's ten gameweeks the lead over FPL's official difficulty depends on the settings: clear for the auto-picked team model (+0.49 vs +0.35 on goal difference, ahead in 9 of 10 gameweeks), small for the default (+0.42). Over **112 gameweeks of the last three seasons** it is clear even for the default: **+0.47 vs +0.35** (gap **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks). See [More data: past seasons](docs/MODEL.md#more-data-past-seasons).
 
 📖 **Formulas, every setting and the reasoning: [docs/MODEL.md](docs/MODEL.md).**
 

@@ -103,21 +103,36 @@ def pick_now(root):
     _write(FILE, st)
 
 
+def _revertable(st, prefs_vals):
+    """The latest history entry, if it is a real change that has not been undone AND the settings still equal what it
+    chose. Anything you changed by hand since is never overwritten."""
+    hist = st.get("history") or []
+    if not hist:
+        return None, "nothing to revert"
+    last = hist[-1]
+    if last.get("reverted") or not last.get("changed"):
+        return None, "nothing to revert"
+    if [float(v) for v in last["chosen"]] != [float(v) for v in prefs_vals]:
+        return None, "the settings were changed after the last pick, so there is nothing safe to revert"
+    return last, None
+
+
 def revert(root):
     """Put back the team-model values that the latest pick replaced, and turn auto-pick off so it stays put."""
     st = _read(FILE)
-    for e in reversed(st.get("history") or []):
-        if e.get("changed") and not e.get("reverted"):
-            merge_local(root, {**_as_prefs(e["was"]), "auto_pick": False})
-            e["reverted"] = True
-            _log(st, {"gw": e["gw"], "at": time.strftime("%d %b %H:%M"), "was": e["chosen"], "chosen": e["was"], "changed": True, "manual": True, "reverted": True})
-            _write(FILE, st)
-            return _as_prefs(e["was"])
-    raise ValueError("nothing to revert")
+    cur = _read(os.path.join(root, "prefs.local.json"))
+    last, why = _revertable(st, current(cur))
+    if not last:
+        raise ValueError(why)
+    merge_local(root, {**_as_prefs(last["was"]), "auto_pick": False})
+    last["reverted"] = True
+    _log(st, {"gw": last["gw"], "at": time.strftime("%d %b %H:%M"), "was": last["chosen"], "chosen": last["was"], "changed": True, "manual": True, "reverted": True})
+    _write(FILE, st)
+    return _as_prefs(last["was"])
 
 
 def status(prefs):
     st = _read(FILE)
     hist = st.get("history") or []
     return {"on": enabled(prefs), **{k: st.get(k) for k in ("gw", "changed", "at", "was")}, "history": hist[-5:][::-1],
-            "can_revert": any(e.get("changed") and not e.get("reverted") for e in hist)}
+            "can_revert": _revertable(st, current(prefs))[0] is not None}

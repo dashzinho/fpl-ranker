@@ -64,7 +64,7 @@ The 1-5 colour is a **quantile bucket across all upcoming fixtures**, not a fixe
 This replaces FPL's official fixture difficulty rating (FDR), a coarse number that does not move with form. The backtest scores the model against the official rating on the same results.
 
 > [!NOTE]
-> On this season's ten gameweeks the model's lead over the official FDR was too small to see (+0.415 vs +0.349). Over **112 gameweeks of the last three seasons** it is clear: ease ranks fixtures by the real goal difference at **+0.47 vs +0.35**, a gap of **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks. Details and caveats in [More data: past seasons](#more-data-past-seasons).
+> On this season's ten gameweeks the model's lead over the official FDR depends on the settings: clear for the auto-picked team model (+0.49 vs +0.35 on goal difference, ahead in 9 of 10 gameweeks), small for the default (+0.42 vs +0.35). Over **112 gameweeks of the last three seasons** it is clear even for the default: ease ranks fixtures by the real goal difference at **+0.47 vs +0.35**, a gap of **+0.12 ± 0.02**, ahead in 79 of 112 gameweeks. Details and caveats in [More data: past seasons](#more-data-past-seasons).
 
 ### 3. Expected points
 
