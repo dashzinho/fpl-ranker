@@ -154,5 +154,64 @@ class BacktestMaths(unittest.TestCase):
         self.assertEqual((p["mins"], p["pts"], round(p["p90"], 2), round(p["xgi90"], 2), round(p["bn90"], 2)), (180, 8, 4.0, 0.5, 0.5))
 
 
+class WeightSets(unittest.TestCase):
+    def test_grid_contains_the_default_and_presets(self):
+        import itertools
+        grid = [list(c) for c in itertools.product(*bt.TM_GRID.values())]
+        self.assertIn([bt.TM_DEFAULT[k] for k in bt.TM_KEYS], grid)
+        for nm, x, _ in bt.PRESETS:
+            self.assertIn(list(x[:4]), grid, nm)
+            self.assertIn(tuple(x[4:]), bt.MIX, nm)
+
+    def test_save_model_set_validates_merges_and_stops_auto_pick(self):
+        with tempfile.TemporaryDirectory() as d:
+            json.dump({"fpl_team_id": 7}, open(os.path.join(d, "prefs.local.json"), "w"))
+            fx.save_model_set(d, {"xg_weight": 1, "half_life_gw": 4, "prior_strength": 10, "prior_scale": 0.2, "wo": 50, "wp": 30, "wv": 20})
+            cur = json.load(open(os.path.join(d, "prefs.local.json")))
+            self.assertEqual((cur["fpl_team_id"], cur["half_life_gw"], cur["prior_scale"], cur["weights"]["perf"], cur["auto_pick"]), (7, 4, 0.2, 30, False))
+            ok = {"xg_weight": 1, "half_life_gw": 4, "prior_strength": 1, "prior_scale": .1}
+            for bad in (dict(ok, xg_weight=2), {"xg_weight": .5}, dict(ok, xg_weight="x"), dict(ok, wo=50, wp=30, wv=30)):
+                with self.assertRaises(ValueError): fx.save_model_set(d, bad)
+
+    def test_xg_weight_changes_the_fit_target(self):
+        boot = {"teams": [{"id": i, "strength_overall_home": 3, "strength_overall_away": 3} for i in (1, 2)]}
+        fixt = [{"id": 1, "finished": True, "event": 1, "team_h": 1, "team_a": 2, "team_h_score": 0, "team_a_score": 0}]
+        xg = {(1, 1): 3.0, (1, 2): 0.0}
+        hi = fm.fit_teams(boot, fixt, xg, 1, {"xg_weight": 1.0, "prior_strength": 0.1})
+        lo = fm.fit_teams(boot, fixt, xg, 1, {"xg_weight": 0.0, "prior_strength": 0.1})
+        self.assertGreater(hi["lam"](1, 2, True), lo["lam"](1, 2, True))
+
+
+class AutoPick(unittest.TestCase):
+    META = {"finished": 10, "best": {"ov": [1.0, 24, 20, 0.2, 65, 30, 5]}}
+
+    def test_picks_once_per_finished_gameweek_and_respects_the_switch(self):
+        import autopick as ap
+        old = ap.FILE
+        with tempfile.TemporaryDirectory() as d:
+            ap.FILE = os.path.join(d, "auto_pick.json")
+            try:
+                prefs = {"auto_pick": True}
+                self.assertTrue(ap.apply(d, prefs, self.META, lambda *_: None))          # first run: picks
+                self.assertEqual((prefs["half_life_gw"], prefs["weights"]["outlook"]), (24, 65))
+                self.assertFalse(ap.apply(d, prefs, self.META, lambda *_: None))         # same gameweek: nothing
+                p2 = {"auto_pick": True}; m2 = dict(self.META, finished=11, best={"ov": [0.0, 4, 1, 0.05, 50, 25, 25]})
+                self.assertTrue(ap.apply(d, p2, m2, lambda *_: None))                    # new gameweek: picks again
+                p3 = {"auto_pick": False}; m3 = dict(m2, finished=12)
+                self.assertFalse(ap.apply(d, p3, m3, lambda *_: None))                   # off: leaves your choice alone
+                ap.pick_now(d)
+                self.assertTrue(ap.apply(d, p3, m3, lambda *_: None))                    # manual button works even when off
+                self.assertFalse(ap.apply(d, p3, m3, lambda *_: None))                   # and only once
+                self.assertEqual(ap.enabled({}), True)
+                self.assertEqual(ap.enabled({"auto_pick": False}), False)
+            finally:
+                ap.FILE = old
+
+    def test_sliders_save_stops_auto_pick(self):
+        with tempfile.TemporaryDirectory() as d:
+            fx.save_weights(d, {"wo": 50, "wp": 25, "wv": 25})
+            self.assertEqual(json.load(open(os.path.join(d, "prefs.local.json")))["auto_pick"], False)
+
+
 if __name__ == "__main__":
     unittest.main()

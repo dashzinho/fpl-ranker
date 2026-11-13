@@ -5,6 +5,8 @@
   POST /api/ai        runs the Claude Code skill "fpl-ai-insights" headlessly (read-only context in, one JSON file out)
   GET  /api/ai/status {running, ok, message, seconds, cost_usd}
   POST /api/weights   saves the Score weights chosen on the Model tab to prefs.local.json, then rebuilds
+  POST /api/modelset  saves a weight set (team-model weights + optional Score weights wo/wp/wv), then rebuilds
+  POST /api/autopick  turns auto-picking of the best weight set on/off ({on: bool}) or picks the best once ({now: true}), then rebuilds
   POST /api/snapshot  receives your logged-in FPL team from the "Sync FPL team" bookmarklet (see My team tab)
 
 Security: binds to 127.0.0.1 only, POST needs a custom header (blocks cross-site requests) and a
@@ -13,7 +15,7 @@ cross-origin calls, but only from https://fantasy.premierleague.com, only for yo
 writes data/my_team_login.json after validating the payload.
 """
 import http.server, json, os, subprocess, sys, threading, time, webbrowser
-import fpl_data as fd, fpl_extra as fd_extra, shutil
+import fpl_data as fd, fpl_extra as fd_extra, autopick, shutil
 from functools import partial
 
 
@@ -163,6 +165,26 @@ def serve(root, html_path, refresh_cmd, port, open_browser):
                     return self._json(400, {"error": str(e)[:120]})
                 start_job()
                 return self._json(200, {"ok": True, "weights": saved})
+            if path == "/api/modelset":
+                if self.headers.get("X-Requested-With") != "modelset-button": return self._json(403, {"error": "forbidden"})
+                try:
+                    saved = fd_extra.save_model_set(root, self._read_json(2000))
+                except Exception as e:                   # noqa: BLE001
+                    return self._json(400, {"error": str(e)[:120]})
+                start_job()
+                return self._json(200, {"ok": True, "set": saved})
+            if path == "/api/autopick":
+                if self.headers.get("X-Requested-With") != "autopick-button": return self._json(403, {"error": "forbidden"})
+                try:
+                    body = self._read_json(500)
+                    if body.get("now"):
+                        autopick.pick_now(root); saved = None
+                    else:
+                        saved = autopick.set_flag(root, bool(body["on"]))
+                except Exception as e:                   # noqa: BLE001
+                    return self._json(400, {"error": str(e)[:120]})
+                start_job()
+                return self._json(200, {"ok": True, "auto_pick": saved})
             if path == "/api/ai":
                 if self.headers.get("X-Requested-With") != "ai-button": return self._json(403, {"error": "forbidden"})
                 with ai.lock:

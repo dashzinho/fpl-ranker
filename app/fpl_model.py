@@ -1,6 +1,6 @@
 """Team-strength model + expected-points model.
 
-1) Teams: Poisson attack/defence ratings fitted on finished matches (target = 65% xG + 35% goals, recent
+1) Teams: Poisson attack/defence ratings fitted on finished matches (target = xg_weight xG + the rest goals, 65/35 by default, recent
    matches weigh more). FPL's coarse 2-5 overall strength is only a *prior* that fades as matches are played,
    so a side that's expected to be bad but is performing well stops being treated as an easy fixture.
 2) Players: expected points per upcoming fixture from blended xG/xA/goal/assist rates (shrunk toward the
@@ -36,13 +36,14 @@ def fit_teams(boot, fixtures, xg, gw_now, prefs):
     n = len(ids)
     tm = {t["id"]: t for t in boot["teams"]}
     obs = []
+    wx = prefs.get("xg_weight", 0.65)                 # share of xG (vs actual goals) in the fit target
     for f in fixtures:
         if not f["finished"] or f["team_h_score"] is None or f["event"] is None:
             continue
         h, a = f["team_h"], f["team_a"]
         xh, xa = xg.get((f["id"], h)), xg.get((f["id"], a))
-        yh = 0.65 * xh + 0.35 * f["team_h_score"] if xh else float(f["team_h_score"])
-        ya = 0.65 * xa + 0.35 * f["team_a_score"] if xa else float(f["team_a_score"])
+        yh = wx * xh + (1 - wx) * f["team_h_score"] if xh else float(f["team_h_score"])
+        ya = wx * xa + (1 - wx) * f["team_a_score"] if xa else float(f["team_a_score"])
         w = 0.5 ** ((gw_now - f["event"]) / prefs.get("half_life_gw", 12))
         obs.append((idx[h], idx[a], 1.0, yh, w))
         obs.append((idx[a], idx[h], -1.0, ya, w))

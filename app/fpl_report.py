@@ -3,10 +3,11 @@ import datetime, json, os
 import fpl_data as fd
 import fpl_model as fm
 import fpl_extra as fx
+import autopick
 from paths import APP
 
 
-def build_data(boot, fixtures, hist, prefs, my_team=None, news=None, bt=None):
+def build_data(boot, fixtures, hist, prefs, my_team=None, news=None, bt=None, bt_tm=None):
     cur = next((e["id"] for e in boot["events"] if e["is_current"]), 0)
     nxt = next((e["id"] for e in boot["events"] if e["is_next"]), cur + 1)
     xg = fm.team_match_table(boot, fixtures, hist)
@@ -62,6 +63,10 @@ def build_data(boot, fixtures, hist, prefs, my_team=None, news=None, bt=None):
     ctx = fx.export_context(data, boot, news)
     data["ai"] = fx.load_insights(boot, ctx["refs"])
     data["bt"] = bt
+    data["bt_tm"] = bt_tm
+    data["auto"] = autopick.status(prefs)
+    data["tm_knobs"] = {"xg_weight": prefs.get("xg_weight", 0.65), "half_life_gw": prefs.get("half_life_gw", 12),
+                        "prior_strength": prefs.get("prior_strength", 5.0), "prior_scale": prefs.get("prior_scale", 0.10)}
     return data
 
 
