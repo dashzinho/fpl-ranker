@@ -198,3 +198,55 @@ def write_snapshot(team_id, raw, for_gw):
     os.makedirs(DATA, exist_ok=True)
     json.dump(sn, open(SNAP, "w", encoding="utf-8"), indent=1)
     return sn
+
+
+# ------------------------------------------------------------------ last good squad (so --offline or an API hiccup does not blank My team)
+MY_CACHE = os.path.join(DATA, "my_team_cache.json")
+
+
+def cache_my_team(team_id, out):
+    json.dump({"team_id": team_id, "saved": time.strftime("%d %b %H:%M"), "data": out}, open(MY_CACHE, "w", encoding="utf-8"))
+
+
+def cached_my_team(team_id):
+    """The last successfully fetched squad for this team id, marked stale, or None."""
+    try:
+        c = json.load(open(MY_CACHE, encoding="utf-8"))
+        if c.get("team_id") == team_id and "error" not in c.get("data", {}):
+            return dict(c["data"], stale=c.get("saved"))
+    except Exception:                                    # noqa: BLE001
+        pass
+    return None
+
+
+# ------------------------------------------------------------------ official FDR over time (so the backtest can use what FPL showed then)
+FDR_FILE = os.path.join(DATA, "fdr_history.json")
+
+
+def update_fdr_history(fixtures, gw_now):
+    """Remember each fixture's official difficulty whenever it changes: {fixture_id: [[gw_seen, home_diff, away_diff], ...]}.
+    FPL only publishes the current value, so history can only start from the first build after this was added."""
+    try:
+        h = json.load(open(FDR_FILE, encoding="utf-8"))
+    except Exception:                                    # noqa: BLE001
+        h = {}
+    changed = False
+    for f in fixtures:
+        cur = [f.get("team_h_difficulty"), f.get("team_a_difficulty")]
+        if cur[0] is None:
+            continue
+        lst = h.setdefault(str(f["id"]), [])
+        if not lst or lst[-1][1:] != cur:
+            lst.append([gw_now, *cur]); changed = True
+    if changed:
+        json.dump(h, open(FDR_FILE, "w", encoding="utf-8"))
+    return h
+
+
+def fdr_as_of(history, fixture, gw):
+    """Official (home, away) difficulty of a fixture as last seen at or before gameweek `gw`, else today's value."""
+    best = None
+    for seen, h, a in history.get(str(fixture["id"]), []):
+        if seen <= gw:
+            best = (h, a)
+    return best or (fixture["team_h_difficulty"], fixture["team_a_difficulty"])

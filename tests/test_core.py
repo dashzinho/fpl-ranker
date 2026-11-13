@@ -155,13 +155,64 @@ class BacktestMaths(unittest.TestCase):
 
 
 class WeightSets(unittest.TestCase):
-    def test_grid_contains_the_default_and_presets(self):
-        import itertools
-        grid = [list(c) for c in itertools.product(*bt.TM_GRID.values())]
-        self.assertIn([bt.TM_DEFAULT[k] for k in bt.TM_KEYS], grid)
+    def test_team_sets_contain_the_default_and_presets(self):
+        self.assertIn(tuple(bt.TM_DEFAULT[k] for k in bt.TM_KEYS), bt.TM_SETS)
+        self.assertEqual(len(set(bt.TM_SETS)), len(bt.TM_SETS))
         for nm, x, _ in bt.PRESETS:
-            self.assertIn(list(x[:4]), grid, nm)
+            self.assertIn(tuple(x[:4]), bt.TM_SETS, nm)
             self.assertIn(tuple(x[4:]), bt.MIX, nm)
+        self.assertEqual(bt._find({}, (0.65, 12, 5, 0.10, 60, 25, 15)), (0, bt.MIX.index((60, 25, 15))))
+        self.assertIsNone(bt._find({}, (0.5, 12, 5, 0.10, 60, 25, 15)))
+
+    def test_overlap_aware_noise_is_never_below_the_plain_one(self):
+        import numpy as np
+        rng = np.random.default_rng(1)
+        base = rng.normal(size=(50, 12))
+        smooth = base[:, :-2] + base[:, 1:-1] + base[:, 2:]                                  # overlapping windows
+        plain = smooth.std(axis=1, ddof=1) / np.sqrt(smooth.shape[1])
+        self.assertTrue((bt._se_hac(smooth) >= plain - 1e-12).all())
+        self.assertGreater(float(np.mean(bt._se_hac(smooth) / plain)), 1.0)                  # positive autocorrelation widens it
+
+    def test_walk_forward_only_uses_earlier_gameweeks(self):
+        import numpy as np
+        nS, nM, last = len(bt.TM_SETS), len(bt.MIX), 10
+        gws = list(range(1, last + 1)); pgws = list(range(4, last + 1))
+        rng = np.random.default_rng(0)
+        T = {k: rng.normal(size=(nS, len(gws))) for k in ("gd", "xgd", "ll")}
+        P = rng.normal(size=(nS, nM, len(pgws)))
+        wf = bt._walkforward(T, P, gws, pgws)
+        self.assertEqual(wf["gws"], [6, 7, 8, 9, 10])
+        # plant a set that is great ONLY in the last gameweek: it must not be picked for any earlier test week
+        T2 = {k: v.copy() for k, v in T.items()}; P2 = P.copy()
+        for k in T2:
+            T2[k][3, -1] = 99.0
+        P2[3, :, -1] = 99.0
+        wf2 = bt._walkforward(T2, P2, gws, pgws)
+        self.assertEqual(wf2["team"]["picks"][:-1], wf["team"]["picks"][:-1])
+
+    def test_official_fdr_as_of_uses_the_value_seen_then(self):
+        import fpl_data as fd
+        f = {"id": 7, "team_h_difficulty": 4, "team_a_difficulty": 2}
+        self.assertEqual(fd.fdr_as_of({}, f, 3), (4, 2))                                      # no history: today's value
+        h = {"7": [[1, 3, 3], [8, 4, 2]]}
+        self.assertEqual(fd.fdr_as_of(h, f, 5), (3, 3))
+        self.assertEqual(fd.fdr_as_of(h, f, 9), (4, 2))
+
+    def test_last_good_squad_is_reused_and_marked_stale(self):
+        import fpl_data as fd
+        old = fd.MY_CACHE
+        with tempfile.TemporaryDirectory() as d:
+            fd.MY_CACHE = os.path.join(d, "c.json")
+            try:
+                self.assertIsNone(fd.cached_my_team(1))
+                fd.cache_my_team(1, {"picks": [1], "bank": 0.5})
+                got = fd.cached_my_team(1)
+                self.assertEqual((got["bank"], bool(got["stale"])), (0.5, True))
+                self.assertIsNone(fd.cached_my_team(2))                                       # another team id: no leak
+                fd.cache_my_team(1, {"error": "boom"})
+                self.assertIsNone(fd.cached_my_team(1))                                       # never serve an error as a squad
+            finally:
+                fd.MY_CACHE = old
 
     def test_save_model_set_validates_merges_and_stops_auto_pick(self):
         with tempfile.TemporaryDirectory() as d:
@@ -171,7 +222,8 @@ class WeightSets(unittest.TestCase):
             self.assertEqual((cur["fpl_team_id"], cur["half_life_gw"], cur["prior_scale"], cur["weights"]["perf"], cur["auto_pick"]), (7, 4, 0.2, 30, False))
             ok = {"xg_weight": 1, "half_life_gw": 4, "prior_strength": 1, "prior_scale": .1}
             for bad in (dict(ok, xg_weight=2), {"xg_weight": .5}, dict(ok, xg_weight="x"), dict(ok, wo=50, wp=30, wv=30)):
-                with self.assertRaises(ValueError): fx.save_model_set(d, bad)
+                with self.assertRaises(ValueError):
+                    fx.save_model_set(d, bad)
 
     def test_xg_weight_changes_the_fit_target(self):
         boot = {"teams": [{"id": i, "strength_overall_home": 3, "strength_overall_away": 3} for i in (1, 2)]}
@@ -183,27 +235,79 @@ class WeightSets(unittest.TestCase):
 
 
 class AutoPick(unittest.TestCase):
-    META = {"finished": 10, "best": {"ov": [1.0, 24, 20, 0.2, 65, 30, 5]}}
+    META = {"finished": 10, "best_team": [1.0, 24, 20, 0.2]}
 
-    def test_picks_once_per_finished_gameweek_and_respects_the_switch(self):
+    def test_picks_once_per_gameweek_changes_only_the_team_model_and_can_revert(self):
+        import autopick as ap
+        old = ap.FILE
+        with tempfile.TemporaryDirectory() as d:
+            ap.FILE = os.path.join(d, "auto_pick.json")
+            json.dump({"fpl_team_id": 1, "weights": {"outlook": 70, "perf": 20, "value": 10}}, open(os.path.join(d, "prefs.local.json"), "w"))
+            try:
+                prefs = {"auto_pick": True, "weights": {"outlook": 70, "perf": 20, "value": 10}}
+                self.assertTrue(ap.apply(d, prefs, self.META, lambda *_: None))              # first run: picks
+                self.assertEqual(prefs["half_life_gw"], 24)
+                self.assertEqual(prefs["weights"], {"outlook": 70, "perf": 20, "value": 10})  # Score weights are never touched
+                saved = json.load(open(os.path.join(d, "prefs.local.json")))
+                self.assertEqual((saved["half_life_gw"], saved["weights"]["outlook"]), (24, 70))
+                self.assertFalse(ap.apply(d, prefs, self.META, lambda *_: None))             # same gameweek: nothing
+                p2 = {"auto_pick": True}
+                m2 = dict(self.META, finished=11, best_team=[0.0, 4, 1, 0.05])
+                self.assertTrue(ap.apply(d, p2, m2, lambda *_: None))                        # new gameweek: picks again
+                p3 = dict(p2, auto_pick=False)
+                m3 = dict(m2, finished=12, best_team=[0.65, 12, 5, 0.10])
+                self.assertFalse(ap.apply(d, p3, m3, lambda *_: None))                       # off: leaves your choice alone
+                ap.pick_now(d)
+                self.assertTrue(ap.apply(d, p3, m3, lambda *_: None))                        # manual button works even when off
+                self.assertFalse(ap.apply(d, p3, m3, lambda *_: None))                       # and only once
+                st = ap.status({"auto_pick": True})
+                self.assertEqual(len(st["history"]), 3)
+                self.assertTrue(st["can_revert"])
+                back = ap.revert(d)                                                          # undo the latest change
+                self.assertEqual(back["half_life_gw"], 4)
+                cur = json.load(open(os.path.join(d, "prefs.local.json")))
+                self.assertEqual((cur["half_life_gw"], cur["auto_pick"]), (4, False))
+                self.assertTrue(ap.enabled({}))
+                self.assertFalse(ap.enabled({"auto_pick": False}))
+            finally:
+                ap.FILE = old
+
+    def test_revert_never_overwrites_a_later_manual_change_or_repeats(self):
+        import autopick as ap
+        old = ap.FILE
+        with tempfile.TemporaryDirectory() as d:
+            ap.FILE = os.path.join(d, "auto_pick.json")
+            json.dump({"fpl_team_id": 1}, open(os.path.join(d, "prefs.local.json"), "w"))
+            try:
+                prefs = {"auto_pick": True}
+                self.assertTrue(ap.apply(d, prefs, self.META, lambda *_: None))
+                self.assertTrue(ap.status(prefs)["can_revert"])
+                fx.save_model_set(d, {"xg_weight": 0.65, "half_life_gw": 7, "prior_strength": 5, "prior_scale": 0.1})   # a manual change
+                with self.assertRaises(ValueError):                                      # must not undo the pick over it
+                    ap.revert(d)
+                self.assertEqual(json.load(open(os.path.join(d, "prefs.local.json")))["half_life_gw"], 7)
+                self.assertFalse(ap.status(json.load(open(os.path.join(d, "prefs.local.json"))))["can_revert"])
+            finally:
+                ap.FILE = old
+        with tempfile.TemporaryDirectory() as d:
+            ap.FILE = os.path.join(d, "auto_pick.json")
+            json.dump({"fpl_team_id": 1}, open(os.path.join(d, "prefs.local.json"), "w"))
+            try:
+                ap.apply(d, {"auto_pick": True}, self.META, lambda *_: None)
+                ap.revert(d)
+                with self.assertRaises(ValueError):                                      # already reverted: nothing more to undo
+                    ap.revert(d)
+            finally:
+                ap.FILE = old
+
+    def test_revert_with_nothing_to_revert_raises(self):
         import autopick as ap
         old = ap.FILE
         with tempfile.TemporaryDirectory() as d:
             ap.FILE = os.path.join(d, "auto_pick.json")
             try:
-                prefs = {"auto_pick": True}
-                self.assertTrue(ap.apply(d, prefs, self.META, lambda *_: None))          # first run: picks
-                self.assertEqual((prefs["half_life_gw"], prefs["weights"]["outlook"]), (24, 65))
-                self.assertFalse(ap.apply(d, prefs, self.META, lambda *_: None))         # same gameweek: nothing
-                p2 = {"auto_pick": True}; m2 = dict(self.META, finished=11, best={"ov": [0.0, 4, 1, 0.05, 50, 25, 25]})
-                self.assertTrue(ap.apply(d, p2, m2, lambda *_: None))                    # new gameweek: picks again
-                p3 = {"auto_pick": False}; m3 = dict(m2, finished=12)
-                self.assertFalse(ap.apply(d, p3, m3, lambda *_: None))                   # off: leaves your choice alone
-                ap.pick_now(d)
-                self.assertTrue(ap.apply(d, p3, m3, lambda *_: None))                    # manual button works even when off
-                self.assertFalse(ap.apply(d, p3, m3, lambda *_: None))                   # and only once
-                self.assertEqual(ap.enabled({}), True)
-                self.assertEqual(ap.enabled({"auto_pick": False}), False)
+                with self.assertRaises(ValueError):
+                    ap.revert(d)
             finally:
                 ap.FILE = old
 

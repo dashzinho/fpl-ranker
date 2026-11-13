@@ -28,7 +28,7 @@ def build_data(boot, fixtures, hist, prefs, my_team=None, news=None, bt=None, bt
     if my_team and "error" not in my_team:
         mine = {k: my_team.get(k) for k in ("name", "gw", "bank", "value", "source", "captured", "chips_used", "history",
                                             "free_transfers", "free_total", "free_transfers_exact", "pending", "chips_left",
-                                            "chip_window_ends_gw")}
+                                            "chip_window_ends_gw", "stale")}
         mine["picks"] = [{"id": p["element"], "pos": p["position"], "cap": p["is_captain"], "vc": p["is_vice_captain"], "mult": p["multiplier"],
                           "sell": p.get("selling_price")} for p in my_team["picks"]]
         # Free Hit: best possible squad for each single gameweek within squad value + bank

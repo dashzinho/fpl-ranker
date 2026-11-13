@@ -6,7 +6,7 @@
   GET  /api/ai/status {running, ok, message, seconds, cost_usd}
   POST /api/weights   saves the Score weights chosen on the Model tab to prefs.local.json, then rebuilds
   POST /api/modelset  saves a weight set (team-model weights + optional Score weights wo/wp/wv), then rebuilds
-  POST /api/autopick  turns auto-picking of the best weight set on/off ({on: bool}) or picks the best once ({now: true}), then rebuilds
+  POST /api/autopick  turns auto-picking of the best weight set on/off ({on: bool}), picks the best once ({now: true}) or reverts the last pick ({revert: true}), then rebuilds
   POST /api/snapshot  receives your logged-in FPL team from the "Sync FPL team" bookmarklet (see My team tab)
 
 Security: binds to 127.0.0.1 only, POST needs a custom header (blocks cross-site requests) and a
@@ -177,7 +177,9 @@ def serve(root, html_path, refresh_cmd, port, open_browser):
                 if self.headers.get("X-Requested-With") != "autopick-button": return self._json(403, {"error": "forbidden"})
                 try:
                     body = self._read_json(500)
-                    if body.get("now"):
+                    if body.get("revert"):
+                        saved = autopick.revert(root)
+                    elif body.get("now"):
                         autopick.pick_now(root); saved = None
                     else:
                         saved = autopick.set_flag(root, bool(body["on"]))
