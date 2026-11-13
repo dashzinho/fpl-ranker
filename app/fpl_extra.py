@@ -68,10 +68,45 @@ def save_weights(root, body):
     except Exception:                                   # noqa: BLE001
         cur = {}
     cur["weights"] = {"outlook": w["wo"], "perf": w["wp"], "value": w["wv"]}
+    cur["auto_pick"] = False                                                   # a manual choice stops auto-picking
     tmp = path + ".tmp"
     json.dump(cur, open(tmp, "w", encoding="utf-8"), indent=2)
     os.replace(tmp, path)
     return cur["weights"]
+
+
+# ------------------------------------------------------------------ saving a team-model weight set as the default
+TM_LIMITS = {"xg_weight": (0.0, 1.0), "half_life_gw": (1.0, 200.0), "prior_strength": (0.0, 100.0), "prior_scale": (0.0, 0.5)}
+
+
+def save_model_set(root, body):
+    """Validate the four team-model knobs and merge them into prefs.local.json. Returns the saved dict."""
+    out = {}
+    for k, (lo, hi) in TM_LIMITS.items():
+        try:
+            v = float(body[k])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"{k} must be a number")
+        if not (lo <= v <= hi) or v != v:
+            raise ValueError(f"{k} must be between {lo} and {hi}")
+        out[k] = int(v) if k == "half_life_gw" and v == int(v) else v
+    path = os.path.join(root, "prefs.local.json")
+    try:
+        cur = json.load(open(path, encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        cur = {}
+    cur.update(out)
+    if "wo" in body:                                    # a full set: team-model weights + Score weights
+        w = {k: int(body[k]) for k in ("wo", "wp", "wv")}
+        if any(v < 0 or v > 100 for v in w.values()) or sum(w.values()) != 100:
+            raise ValueError("score weights must be between 0 and 100 and sum to 100")
+        cur["weights"] = {"outlook": w["wo"], "perf": w["wp"], "value": w["wv"]}
+        out.update(w)
+    cur["auto_pick"] = False                            # a manual choice stops auto-picking
+    tmp = path + ".tmp"
+    json.dump(cur, open(tmp, "w", encoding="utf-8"), indent=2)
+    os.replace(tmp, path)
+    return out
 
 
 # ------------------------------------------------------------------ AI layer

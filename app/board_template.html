@@ -118,6 +118,12 @@ a.nl{margin-left:auto;font-size:11.5px;color:var(--muted);text-decoration:none;f
 .lah{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;font-weight:700}.lah select{width:auto;padding:6px 8px}
 .homegrid .span3{grid-column:1/-1}.cols2{columns:2;column-gap:28px}.cols2 .nline{break-inside:avoid}@media(max-width:800px){.cols2{columns:1}}
 .btbar{display:inline-block;width:110px;height:8px;border-radius:4px;background:var(--panel2);vertical-align:middle;margin-right:6px;overflow:hidden}.btbar i{display:block;height:100%;background:linear-gradient(90deg,var(--violet),var(--accent))}
+.wchips{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:5px}.wchips small{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:2px}
+.wchip{display:inline-flex;align-items:baseline;gap:4px;font-size:11px;line-height:1.5;padding:1px 7px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}.wchip b{display:inline;color:var(--text);font-weight:700}.wchip.sc{border-color:color-mix(in srgb,var(--violet) 50%,var(--line))}
+.wsnow{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--accent) 7%,var(--panel2));margin:6px 0 4px}
+.wsranks{display:flex;flex-wrap:wrap;gap:6px}.wsr{min-width:84px;text-align:center;padding:5px 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}.wsr.on{border-color:var(--accent)}.wsr small{display:block;font-size:10px;color:var(--muted)}.wsr b{font-size:15px}
+table.ws td,table.ws th{vertical-align:middle}table.ws tr.sec td{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding-top:16px;border-bottom:1px solid var(--line)}
+table.ws .rkc{font-size:16px;font-weight:800;white-space:nowrap}table.ws .big{font-size:15px;font-weight:700}
 #tipbox{position:fixed;z-index:200;display:none;max-width:320px;padding:9px 12px;border-radius:10px;background:#07071a;color:#ecebff;border:1px solid var(--violet);box-shadow:0 10px 30px rgba(0,0,0,.45);font:12.5px/1.45 Inter,"Segoe UI",system-ui,sans-serif;pointer-events:none}
 [data-tip]{cursor:help}
 .info{display:inline-grid;place-items:center;width:15px;height:15px;margin-left:5px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font:700 10px/1 sans-serif;font-style:normal;vertical-align:1px}
@@ -895,7 +901,7 @@ function viewTeams() {
     ${[...D.teams].sort((a, b) => a.rank_now - b.rank_now).map(t => { const ch = t.rank_prior - t.rank_now; return `<tr><td class="rk num">${t.rank_now}</td><td><span class="pn">${esc(t.name)}</span></td>
       <td>${t.form.map(r => `<span class="tag ${r === 'W' ? 'good' : r === 'L' ? 'bad' : ''}" style="padding:1px 6px">${r}</span>`).join(' ')}</td><td class="r num">${t.w}-${t.d}-${t.l}</td><td class="r num">${t.gf}-${t.ga}</td><td class="r num">${t.xgf}-${t.xga}</td>
       <td class="r num">${t.att.toFixed(2)}</td><td class="r num">${t.def.toFixed(2)}</td><td><span class="rankchg ${ch > 0 ? 'd-up' : ch < 0 ? 'd-dn' : ''}">${ch > 0 ? '▲' + ch : ch < 0 ? '▼' + (-ch) : '='}</span> <span class="muted">was #${t.rank_prior}</span></td></tr>`; }).join('')}</tbody></table></div>
-    Each team gets an attack and defence rating fitted on its results and xG (recent matches count more), blended with FPL's own strength early in the season (${D.meta.n_matches} matches so far). Colour compares expected goals for vs against in that match. Home advantage ×${Math.exp(D.meta.home_adv).toFixed(2)}. This has not been benchmarked against FPL's own difficulty rating yet.</details>`;
+    Each team gets an attack and defence rating fitted on its results and xG (recent matches count more), blended with FPL's own strength early in the season (${D.meta.n_matches} matches so far). Colour compares expected goals for vs against in that match. Home advantage ×${Math.exp(D.meta.home_adv).toFixed(2)}. Benchmarked against FPL's own difficulty rating on the Model tab.</details>`;
   return h;
 }
 
@@ -1055,69 +1061,117 @@ function tickCountdown() {
 
 Object.assign(TIPS, {
   t_md: 'Model health: how accurate the projections have been, and which Score weights would have picked better players in past gameweeks.',
-  bt_what: 'Re-runs the model for every finished gameweek using only the data available before it, then checks how many points the top-ranked players (the same top picks Overview and Rankings show) actually scored over the next 3 gameweeks, for every mix of the three weights.',
-  bt_value: 'Average points the top-ranked players scored over the next 3 gameweeks (or per £m of their price, for the second target), averaged across positions and gameweeks.',
-  bt_gap: 'How far this mix trails the best, plus or minus one standard error across gameweeks. "≈ tie" means within about two standard errors: not distinguishable from the best on this data.',
-  bt_pts: 'Judge mixes by raw points scored by the top picks. Favours projections over value.',
-  bt_perm: 'Judge mixes by points per £m of the top picks. Favours cheap players, so it favours a high value weight.',
-  bt_save: 'Writes these slider values to prefs.local.json as the new default and rebuilds the page.',
   bt_acc: 'For each position: how well the model, last-3-gameweeks form and season average each ranked players by what they scored the next gameweek. Rank correlation: 1 is perfect, 0 is no better than chance.',
+  auto_now: 'Runs the backtest ranking once, right now, and adopts the best-ranked values as your default, even if auto-pick is off. Does not change the auto-pick switch.',
+  auto_pick: 'When on, every update after a gameweek finishes re-runs the backtests and adopts the best-ranked values (lowest mean rank across the measures) as your default. Choosing values yourself turns this off for that group; click here to turn it back on.',
   bt_gw: 'The model\'s rank correlation for each gameweek. Single weeks vary a lot, which is why gains of a point or two are not conclusive.'
 });
 
-/* ---------- model tab: weights backtest ---------- */
-function myMixKey() {
-  const t = S.wo + S.wp + S.wv; if (!t) return null;
-  let a = [S.wo, S.wp, S.wv].map(x => Math.round(x * 100 / t / 5) * 5);
-  a[2] = Math.max(0, 100 - a[0] - a[1]); return a;
-}
+/* ---------- model tab: one table of weight sets (team model + Score weights) ---------- */
+Object.assign(TIPS, {
+  ws_what: 'Every combination of the team-strength model\'s four weights and the Score weights (outlook / perf / value), re-run for each finished gameweek using only earlier data, then scored on what happened. One table: the Score weights drive Rankings and Overview picks, the team-model weights drive fixture difficulty and every projection.',
+  ws_ov: 'Overall: the mean percentile of a set across the four measures, 100 is best on all of them. This is what auto-pick uses, so no single measure decides.',
+  ws_pts: 'Points: realised points over the next 3 gameweeks of the top-ranked players per position (the same top picks Overview shows), averaged over gameweeks. Depends on both the team model and the Score weights.',
+  ws_gd: 'Goal difference: how well the set\'s fixture ease ranked each gameweek\'s fixtures by the real goal difference (Spearman rank correlation). Depends on the team-model weights only.',
+  ws_xgd: 'xG difference: the same, against the xG difference, which is less noisy than the score. Team-model weights only.',
+  ws_ll: 'Goals likelihood: average log-probability of the goals each team really scored under the set\'s expected goals (closer to 0 is better). Rewards calibrated expected goals, not just ranking. Team-model weights only.',
+  ws_rank: 'Where this set ranks among everything tested on the selected measure: 1 is best, equal scores share a rank. Goal difference, xG difference and goals likelihood do not depend on the Score mix, so they rank the team-model sets; Overall and Points rank all sets. The row position in this list is not the rank: the list shows the best sets, the named presets and your active set.',
+  ws_gap: 'Gap to the best set on this measure, and how big it is compared with the noise (the standard error of that gap across gameweeks). Under 2× the noise = "tied with best": the data cannot separate them, so their rank order is not meaningful. Over 2× = genuinely behind.',
+  ws_save: 'Writes the Rankings sliders (outlook / perf / value) to prefs.local.json as the new default and rebuilds. Turns auto-pick off.',
+  ws_params: 'Values tested. Team model: share of the fit target that is xG, half-life of old matches in gameweeks, strength of the pull toward FPL\'s own ratings, and the size of those prior ratings. Score mix: outlook / perf / value in steps of 5 summing to 100.',
+  auto_pick: 'When on, the first update after a gameweek has fully finished re-runs the backtest and adopts the best overall set as your default. Choosing a set or sliders yourself turns this off; click here to turn it back on.',
+  auto_now: 'Runs the ranking once, right now, and adopts the best overall set as your default, even if auto-pick is off. Does not change the auto-pick switch.',
+  bt_acc: 'For each position: how well the model, last-3-gameweeks form and season average each ranked players by what they scored the next gameweek. Rank correlation: 1 is perfect, 0 is no better than chance.',
+  bt_gw: 'The model\'s rank correlation for each gameweek. Single weeks vary a lot, which is why gains of a point or two are not conclusive.'
+});
+const WS_VIEWS = [['ov', 'Overall'], ['pts', 'Points'], ['gd', 'Goal difference'], ['xgd', 'xG difference'], ['ll', 'Goals likelihood']];
+const WS_NAMES = ['xg_weight', 'half_life_gw', 'prior_strength', 'prior_scale', 'wo', 'wp', 'wv'];
+const wsSame = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+const wsTeam = x => `xG ${Math.round(x[0] * 100)}% · half-life ${x[1]} · prior ${x[2]} × ${x[3].toFixed(2)}`;
+const wsMix = x => `Score ${x[4]} / ${x[5]} / ${x[6]}`;
+const wsFmt = (m, v) => m === 0 ? v.toFixed(2) : m === 3 ? v.toFixed(3) : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3);
 function viewModel() {
-  const B = D.bt;
-  if (!B) return `<div class="card empty">The backtest needs at least five finished gameweeks. Run <code>python fpl.py --backtest</code> once more data is in.</div>`;
-  const tg = S.btT === 'per_m' ? 'per_m' : 'pts', T = B[tg], key = myMixKey();
-  const mine = key ? T.mixes.find(m => m.wo === key[0] && m.wp === key[1] && m.wv === key[2]) : null;
-  const rankMine = mine ? T.mixes.indexOf(mine) + 1 : null;
-  const unit = tg === 'pts' ? 'pts' : 'pts / £m', max = T.mixes[0].v, min = Math.min(...T.mixes.map(m => m.v));
-  const rows = T.mixes.slice(0, 8);
-  if (mine && !rows.includes(mine)) rows.push(mine);
-  const bar = v => Math.max(4, Math.round(100 * (v - min * 0.97) / (max - min * 0.97 + 1e-9)));
-  const table = `<table class="mt"><thead><tr><th>Outlook / Perf / Value</th><th class="r" ${tip('bt_value')}>${tg === 'pts' ? 'Points of top picks' : 'Points per £m'}</th><th class="r" ${tip('bt_gap')}>Behind best</th><th></th></tr></thead><tbody>
-    ${rows.map(m => { const you = m === mine; return `<tr class="${you ? 'cur' : ''}"><td><b class="num">${m.wo} / ${m.wp} / ${m.wv}</b> ${you ? '<span class="tag good">your sliders</span>' : ''}</td>
-      <td class="r num"><span class="btbar"><i style="width:${bar(m.v)}px"></i></span> ${m.v.toFixed(2)}</td>
-      <td class="r num">${m.gap === 0 ? 'best' : '−' + m.gap.toFixed(2) + ' ± ' + m.se.toFixed(2)} ${m.tie ? '<span class="tag" data-tip="Within about two standard errors of the best mix: statistically a tie." tabindex="0">≈ tie</span>' : '<span class="tag warn">behind</span>'}</td>
-      <td class="r"><button class="plan" data-usew="${m.wo},${m.wp},${m.wv}">Use</button></td></tr>`; }).join('')}</tbody></table>`;
-  const stab = T.stability >= 0.8 ? 'Odd and even gameweeks rank the mixes alike, so the ordering is fairly consistent.' : T.stability >= 0.5 ? 'The ordering is only partly consistent between odd and even gameweeks.' : 'Odd and even gameweeks disagree, so the ordering is mostly noise.';
-  const verdict = mine ? (mine.tie ? `Your current mix (${key.join('/')}) is <b>statistically tied</b> with the best on this data: changing it is unlikely to matter yet.`
-      : `Your current mix (${key.join('/')}) trails the best by ${mine.gap.toFixed(2)} ${unit} (±${mine.se.toFixed(2)}): a real but small gap.`) : 'Your sliders are not on the 5-point grid tested.';
-  const acc = Object.entries(B.accuracy);
-  const mxr = Math.max(0.6, ...B.per_gw.map(g => g.rho));
-  return `<div class="posbar"><button class="pill ${tg === 'pts' ? 'on' : ''}" data-btt="pts" ${tip('bt_pts')}>Maximise points</button><button class="pill ${tg === 'per_m' ? 'on' : ''}" data-btt="per_m" ${tip('bt_perm')}>Maximise points per £m</button>
-      <span class="tag" style="align-self:center">GW${B.gws[0]}–GW${B.gws[1]} · ${B.n} player-gameweeks · computed ${esc(B.computed)}</span></div>
-    <div class="mygrid"><div class="card section"><h3 class="panel-title">Which weights would have picked better players? ${info('bt_what')}</h3>${table}
-      <div class="mvline" style="margin-top:8px"><button class="plan" id="savew" ${tip('bt_save')} ${location.protocol.startsWith('http') ? '' : 'disabled'}>Save my sliders as default</button><span id="savewst" class="muted"></span></div>
-      <div class="note">"Use" sets the Rankings sliders for this browser. "Save my sliders as default" stores them in <code>prefs.local.json</code> (needs <code>start.bat</code>). Nothing changes automatically.</div></div>
+  const B = D.bt_tm;
+  if (!B) return `<div class="card empty">The weight-set backtest needs at least five finished gameweeks. Run <code>python fpl.py --backtest</code> once more data is in.</div>`;
+  const view = WS_VIEWS.some(v => v[0] === S.tmT) ? S.tmT : 'ov', vi = WS_VIEWS.findIndex(v => v[0] === view), mi = vi - 1;
+  const teamOnly = ['gd', 'xgd', 'll'].includes(view), den = teamOnly ? B.n_team : B.n_sets, unitN = teamOnly ? 'team-model sets' : 'sets';
+  const cur = B.rows.find(r => r.cur) || null;
+  const val = r => view === 'ov' ? r.ov : r.v[mi];
+  const rkOrder = (x, y) => x.rk[vi] - y.rk[vi] || val(y) - val(x);
+  let top = B.rows.filter(r => r.top.includes(view)).sort(rkOrder).slice(0, 6);
+  let pres = B.rows.filter(r => r.pre && !top.includes(r)).sort(rkOrder);
+  if (teamOnly) {                                   // these measures ignore the Score mix: one row per distinct team-model set
+    const seen = new Set(), keep = r => { const k = r.x.slice(0, 4).join(','); if (seen.has(k) && !r.cur) return false; seen.add(k); return true; };
+    top = top.filter(keep); pres = pres.filter(keep);
+  }
+  const all = B.rows.map(val), max = Math.max(...all), min = Math.min(...all);
+  const bar = v => Math.max(4, Math.round(100 * (v - min) / (max - min + 1e-9)));
+  const behind = r => view === 'ov' ? (r.rk[0] === 1 ? '<b>best</b>' : B.ov_best - r.ov < 0.05 ? '≈ best' : '−' + (B.ov_best - r.ov).toFixed(1))
+      : r.gap[mi] === 0 ? '<b>best</b>' : `−${r.gap[mi].toFixed(3)}<div class="muted" style="font-size:11px">${r.se[mi] > 0 ? (r.gap[mi] / r.se[mi]).toFixed(1) + '× the noise' : ''}</div><div>${r.tie[mi] ? `<span class="tag good" data-tip="${esc('The gap to the best (' + r.gap[mi].toFixed(3) + ') is under twice the noise across gameweeks (±' + r.se[mi].toFixed(3) + '), so this set cannot be told apart from the best on this data. The order within the tied group is not meaningful.')}" tabindex="0">tied with best</span>` : `<span class="tag warn" data-tip="${esc('The gap to the best (' + r.gap[mi].toFixed(3) + ') is more than twice the noise across gameweeks (±' + r.se[mi].toFixed(3) + '): this set is genuinely behind on this measure.')}" tabindex="0">behind</span>`}</div>`;  const off = B.official, useOk = location.protocol.startsWith('http');
+  const chips = (x, withScore) => `<div class="wchips"><small>Team model</small><span class="wchip">xG <b>${Math.round(x[0] * 100)}%</b></span><span class="wchip">half-life <b>${x[1]}</b></span><span class="wchip">prior <b>${x[2]} × ${(+x[3]).toFixed(2)}</b></span>${withScore ? `<small style="margin-left:6px">Score</small><span class="wchip sc">outlook <b>${x[4]}</b></span><span class="wchip sc">perf <b>${x[5]}</b></span><span class="wchip sc">value <b>${x[6]}</b></span>` : ''}</div>`;
+  const rowHtml = r => `<tr class="${r.cur ? 'cur' : ''}"><td class="r rkc">#${r.rk[vi].toLocaleString()}</td>
+      <td>${r.nm ? `<b ${r.ds ? `data-tip="${esc(r.ds)}" tabindex="0"` : ''}>${esc(r.nm)}</b> ` : ''}${r.cur ? '<span class="tag good">active</span>' : ''}${chips(r.x, !teamOnly)}</td>
+      <td class="r num"><div class="big">${view === 'ov' ? r.ov.toFixed(1) : wsFmt(mi, r.v[mi])}</div><span class="btbar" style="margin:0;width:90px"><i style="width:${bar(val(r))}px"></i></span></td>
+      <td class="r num">${behind(r)}</td><td class="r"><button class="plan" data-usetm="${r.x.join(',')}" ${r.cur || !useOk ? 'disabled' : ''}>${r.cur ? 'Active' : 'Use'}</button></td></tr>`;
+  const sec = t => `<tr class="sec"><td colspan="5">${t}</td></tr>`;
+  const vname = WS_VIEWS[vi][1].toLowerCase();
+  const table = `<div style="overflow:auto"><table class="mt ws"><thead><tr><th class="r" ${tip('ws_rank')}>Rank<br><small class="muted">of ${den.toLocaleString()}</small></th><th>Weight set</th><th class="r" ${tip('ws_' + view)}>${WS_VIEWS[vi][1]}</th><th class="r" ${tip('ws_gap')}>vs best</th><th></th></tr></thead><tbody>
+    ${sec(`Best on ${vname}`)}${top.map(rowHtml).join('')}
+    ${pres.length ? sec('Named presets') + pres.map(rowHtml).join('') : ''}
+    ${off && off[view] ? sec('Reference') + `<tr><td></td><td><b>FPL's official difficulty</b> <span class="tag" data-tip="FPL's own 1–5 fixture difficulty (today's values), scored the same way. A reference, not something you can switch to: it has no projections or Score weights." tabindex="0">reference</span></td><td class="r num"><div class="big">${wsFmt(mi, off[view].v)}</div></td><td class="r num">${off[view].gap <= 0 ? 'ahead of best' : '−' + off[view].gap.toFixed(3) + ' <span class="muted">± ' + off[view].se.toFixed(3) + '</span>'}</td><td></td></tr>` : ''}</tbody></table></div>`;
+  const kx = D.tm_knobs, wx = D.weights;
+  const curX = cur ? cur.x : [kx.xg_weight, kx.half_life_gw, kx.prior_strength, kx.prior_scale, wx.outlook, wx.perf, wx.value];
+  const banner = `<div class="wsnow"><div><span class="tag good">Your active set</span>${cur && cur.nm ? ` <b>${esc(cur.nm)}</b>` : ''}${chips(curX, true)}${cur ? '' : '<div class="muted" style="font-size:12px;margin-top:4px">Not on the tested grid (for example sliders that are not multiples of 5), so it cannot be ranked.</div>'}</div>
+    ${cur ? `<div class="wsranks">${WS_VIEWS.map(([k, n], i) => `<div class="wsr ${k === view ? 'on' : ''}"><small>${n}</small><b>#${cur.rk[i].toLocaleString()}</b><small>of ${(i >= 2 ? B.n_team : B.n_sets).toLocaleString()}</small></div>`).join('')}</div>` : ''}</div>`;
+  const stabV = view === 'ov' ? null : B.stability[view];
+  const stab = stabV === null ? 'Overall combines the four measures, so it is steadier than any single one.' : stabV >= 0.8 ? 'Odd and even gameweeks rank the sets alike, so the ordering is fairly consistent.' : stabV >= 0.5 ? 'The ordering is only partly consistent between odd and even gameweeks.' : 'Odd and even gameweeks disagree, so the ordering is mostly noise.';
+  const verdict = !cur ? 'Your active set is not on the tested grid (for example sliders that are not multiples of 5), so it cannot be ranked.'
+      : view === 'ov' ? `Your active set ranks <b class="num">${cur.rk[0].toLocaleString()}</b> of ${B.n_sets.toLocaleString()} overall (percentile ${cur.ov.toFixed(0)}).`
+      : cur.tie[mi] || cur.gap[mi] === 0 ? `Your active set is <b>statistically tied</b> with the best on this measure: switching is unlikely to matter yet.`
+      : `Your active set trails the best on this measure by ${cur.gap[mi].toFixed(3)} (±${cur.se[mi].toFixed(3)}), rank ${cur.rk[vi].toLocaleString()} of ${den.toLocaleString()} ${unitN}.`;
+  const g = B.grid, B0 = D.bt;
+  const acc = B0 ? Object.entries(B0.accuracy) : [];
+  const mxr = B0 ? Math.max(0.6, ...B0.per_gw.map(g => g.rho)) : 1;
+  return `<div class="posbar">${WS_VIEWS.map(([k, n]) => `<button class="pill ${view === k ? 'on' : ''}" data-tmt="${k}" ${tip('ws_' + k)}>${n}</button>`).join('')}
+      <span class="tag" style="align-self:center">GW${B.gws[0]}–GW${B.gws[1]} · ${B.n_sets.toLocaleString()} sets · computed ${esc(B.computed)}</span></div>
+    <div class="mygrid"><div class="card section"><h3 class="panel-title">Which weights would have worked best? ${info('ws_what')}</h3>${banner}${table}
+      <div class="mvline" style="margin-top:8px"><button class="plan" id="savew" ${tip('ws_save')} ${useOk ? '' : 'disabled'}>Save my sliders as default</button><span id="savewst" class="muted"></span><span id="tmst" class="muted"></span></div>${autoRow()}
+      <div class="note"><b>Rank vs tied:</b> the rank is the exact order of the averages. "Tied with best" means the gap is smaller than the gameweek-to-gameweek noise, so a set ranked #6 can still be tied with #1: the order inside a tied group is not meaningful, only the sets marked "behind" are clearly worse.</div>
+      <div class="note">"Use" saves that whole set (team model and Score weights) to <code>prefs.local.json</code> and rebuilds the page: difficulty colours, projections, Rankings and squad picks all change (needs <code>start.bat</code>). The Rankings sliders only change for this browser until saved. Nothing switches unless you choose it or auto-pick is on.</div></div>
     <div class="mside"><div class="card section"><h3 class="panel-title">How to read this</h3>
         <div class="mvline">${verdict}</div>
-        <div class="mvline"><b class="num">${T.n_tied} of ${T.mixes.length}</b>&nbsp;mixes are statistically tied with the best.</div>
-        <div class="mvline">Stability <b class="num">${T.stability >= 0 ? '+' : ''}${T.stability}</b>&nbsp;· ${stab}</div>
-        <div class="note">One season, few gameweeks, overlapping 3-gameweek windows, today's prices, and the best of ${T.mixes.length} mixes is flattered by being picked on the same data. Treat a tie as a tie. ${tg === 'pts' ? 'This target rewards raw points, so it always favours a low value weight.' : 'This target rewards cheap points, so it always favours a high value weight.'}</div></div>
-      <div class="card section"><h3 class="panel-title">Projection accuracy by position ${info('bt_acc')}</h3>
+        ${view === 'ov' ? '' : `<div class="mvline"><b class="num">${B.n_tied[view].toLocaleString()} of ${den.toLocaleString()}</b>&nbsp;${unitN} are statistically tied with the best on this measure.</div>`}
+        <div class="mvline">${stabV === null ? '' : `Stability <b class="num">${stabV >= 0 ? '+' : ''}${stabV}</b>&nbsp;· `}${stab}</div>
+        <div class="note">Each set is refitted for every finished gameweek using only earlier data, then scored on what followed. One season and ${B.gws[1]} gameweeks: the best of ${B.n_sets.toLocaleString()} sets is flattered by being picked on the same data, so treat a tie as a tie. Points start at GW${B.pgws[0]} (the player model needs history). Goal difference, xG and likelihood do not depend on the Score mix, so those views list distinct team-model sets. xG-heavy sets are partly judged on the quantity they fit.</div></div>
+      <div class="card section"><h3 class="panel-title">What was tested ${info('ws_params')}</h3>
+        <table class="mt"><tbody><tr><td>xG share</td><td class="r num">${g.xg_weight.map(v => Math.round(v * 100) + '%').join(' · ')}</td></tr><tr><td>Half-life (GWs)</td><td class="r num">${g.half_life_gw.join(' · ')}</td></tr><tr><td>Prior strength</td><td class="r num">${g.prior_strength.join(' · ')}</td></tr><tr><td>Prior scale</td><td class="r num">${g.prior_scale.map(v => v.toFixed(2)).join(' · ')}</td></tr><tr><td>Score mix</td><td class="r num">${B.n_mix} (steps of 5)</td></tr></tbody></table></div>
+      ${B0 ? `<div class="card section"><h3 class="panel-title">Projection accuracy by position ${info('bt_acc')}</h3>
         <table class="mt"><thead><tr><th></th><th class="r">Model</th><th class="r">Form</th><th class="r">Season avg</th><th class="r">Error (pts)</th></tr></thead><tbody>
         ${acc.map(([nm, a]) => `<tr><td>${nm}</td><td class="r num ${a.rho >= a.rho_form && a.rho >= a.rho_avg ? 'cmpbest' : ''}">${a.rho.toFixed(2)}</td><td class="r num">${a.rho_form.toFixed(2)}</td><td class="r num">${a.rho_avg.toFixed(2)}</td><td class="r num">${a.mae.toFixed(1)}</td></tr>`).join('')}</tbody></table>
-        <div class="note">Rank correlation with what players actually scored the next gameweek (higher is better), against two naive baselines. Error = mean absolute error of projected vs actual points. Bias ${B.bias >= 0 ? '+' : ''}${B.bias} pts per player.</div></div>
+        <div class="note">Rank correlation with what players actually scored the next gameweek (higher is better), against two naive baselines, at your active set. Error = mean absolute error of projected vs actual points. Bias ${B0.bias >= 0 ? '+' : ''}${B0.bias} pts per player.</div></div>
       <div class="card section"><h3 class="panel-title">Accuracy by gameweek ${info('bt_gw')}</h3>
-        <div class="hbars">${B.per_gw.map(g => `<div class="hb" title="GW${g.gw}: rank correlation ${g.rho}"><i style="height:${Math.max(2, Math.round(Math.max(0, g.rho) / mxr * 70))}px"></i><b class="num">${g.rho.toFixed(2)}</b><small>${g.gw}</small></div>`).join('')}</div></div></div></div>`;
+        <div class="hbars">${B0.per_gw.map(g => `<div class="hb" title="GW${g.gw}: rank correlation ${g.rho}"><i style="height:${Math.max(2, Math.round(Math.max(0, g.rho) / mxr * 70))}px"></i><b class="num">${g.rho.toFixed(2)}</b><small>${g.gw}</small></div>`).join('')}</div></div>` : ''}</div></div>`;
 }
-async function saveWeights() {
-  const st = $('#savewst'), btn = $('#savew'); if (!st) return;
-  btn.disabled = true; st.textContent = 'Saving…';
+function autoRow() {
+  const A = D.auto; if (!A) return '';
+  const ok = location.protocol.startsWith('http');
+  const note = A.on ? (A.gw ? `Last picked after GW${A.gw}${A.changed ? '' : ' (no change)'}. It picks again once the next gameweek has finished.` : 'It will pick the best set at the next update.')
+                    : 'Off: your own choice is kept. Turn on to adopt the best now and after each gameweek.';
+  return `<div class="mvline" style="margin-top:8px"><button class="pill ${A.on ? 'on' : ''}" data-auto="1" ${tip('auto_pick')} ${ok ? '' : 'disabled'}>Auto-pick best set: ${A.on ? 'on' : 'off'}</button><button class="plan" data-autonow="1" ${tip('auto_now')} ${ok ? '' : 'disabled'}>Pick best now</button><span class="muted" id="auto-st"> ${note}</span></div>`;
+}
+async function postJson(url, hdr, body, st, done) {
+  if (st) st.textContent = ' Saving…';
   try {
-    const r = await fetch('/api/weights', {method: 'POST', headers: {'X-Requested-With': 'weights-button', 'Content-Type': 'application/json'}, body: JSON.stringify({wo: S.wo, wp: S.wp, wv: S.wv})});
+    const r = await fetch(url, {method: 'POST', headers: {'X-Requested-With': hdr, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     if (r.status === 403 || r.status === 404) throw new Error('the local server is running old code: close its window and start start.bat again');
     if (!r.ok) throw new Error((await r.json()).error || 'server said ' + r.status);
-    st.textContent = 'Saved as default. Rebuilding…'; setTimeout(() => location.reload(), 2500);
-  } catch (e) { st.textContent = 'Could not save: ' + e.message; btn.disabled = false; }
+    if (st) st.textContent = done; setTimeout(() => location.reload(), 3500);
+  } catch (e) { if (st) st.textContent = ' Could not save: ' + e.message; document.querySelectorAll('[data-usetm],[data-auto],[data-autonow],#savew').forEach(b => b.disabled = false); }
 }
+const lockBtns = () => document.querySelectorAll('[data-usetm],[data-auto],[data-autonow],#savew').forEach(b => b.disabled = true);
+function setAuto(on, now) { lockBtns(); postJson('/api/autopick', 'autopick-button', now ? {now: true} : {on}, $('#auto-st'), ' Saved. Rebuilding…'); }
+function saveModelSet(x) { lockBtns(); postJson('/api/modelset', 'modelset-button', Object.fromEntries(WS_NAMES.map((k, i) => [k, x[i]])), $('#tmst'), ' Saved. Rebuilding with the new set…'); }
+function saveWeights() { lockBtns(); postJson('/api/weights', 'weights-button', {wo: S.wo, wp: S.wp, wv: S.wv}, $('#savewst'), ' Saved as default. Rebuilding…'); }
 
 function render() {
   if (!['home', 'my', 'rk', 'tm', 'cmp', 'wt', 'nw', 'sq', 'md'].includes(S.tab)) S.tab = 'home';
@@ -1141,9 +1195,11 @@ function bind() {
   document.querySelectorAll('[data-tk]').forEach(el => el.onchange = () => { const k = el.dataset.tk, v = el.value;
     if (k === 'mode') S.tkMode = v; else if (k === 'sort') S.tkSort = v; else if (k === 'from') { const to0 = S.tkTo || GW[Math.min(4, GW.length - 1)]; S.tkFrom = +v; S.tkTo = Math.max(to0, +v + Math.min(4, GW.length - 1 - GW.indexOf(+v))); } else if (k === 'to') S.tkTo = +v; render(); });
   document.querySelectorAll('[data-cmp]').forEach(el => el.onchange = () => { S.cmp = [...document.querySelectorAll('[data-cmp]')].map(x => +x.value).filter(Boolean); render(); });
-  document.querySelectorAll('[data-btt]').forEach(b => b.onclick = () => { S.btT = b.dataset.btt; render(); });
-  document.querySelectorAll('[data-usew]').forEach(b => b.onclick = () => { const [o, p, v] = b.dataset.usew.split(',').map(Number); S.wo = o; S.wp = p; S.wv = v; S.tab = 'rk'; render(); });
   const sw = $('#savew'); if (sw) sw.onclick = saveWeights;
+  document.querySelectorAll('[data-tmt]').forEach(b => b.onclick = () => { S.tmT = b.dataset.tmt; render(); });
+  document.querySelectorAll('[data-usetm]').forEach(b => b.onclick = () => saveModelSet(b.dataset.usetm.split(',').map(Number)));
+  document.querySelectorAll('[data-auto]').forEach(b => b.onclick = () => setAuto(!(D.auto || {}).on));
+  document.querySelectorAll('[data-autonow]').forEach(b => b.onclick = () => setAuto(true, true));
   document.querySelectorAll('[data-style]').forEach(b => b.onclick = () => { S.style = b.dataset.style; render(); });
   document.querySelectorAll('[data-bw]').forEach(r => r.onchange = () => { const bw = [...bwOf()]; bw[+r.dataset.bw] = +r.value / 100; S.bw = bw; render(); });
   const tg = (key, id) => { const t = new Set(S[key] || []); t.has(id) ? t.delete(id) : t.add(id); S[key] = [...t]; };
