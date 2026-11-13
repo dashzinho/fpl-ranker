@@ -218,7 +218,7 @@ When a gameweek has fully finished (all matches done, FPL's `finished` flag), th
 
 ---
 
-## ⚙️ Preferences
+## 🔧 Preferences
 
 <details>
 <summary><code>prefs.json</code>, overridden by <code>prefs.local.json</code> (click to expand)</summary>
@@ -265,7 +265,7 @@ Private settings (your team id, and whatever the Model tab or auto-pick saves) l
 
 </details>
 
-## 🗺️ Layout
+## 📁 Layout
 
 ```
 fpl.py          entry point (setup + update logic)
@@ -278,7 +278,7 @@ data/           cached API data, state.json, backtest.json, backtest_sets.json/.
 output/         fpl_rankings.html (git-ignored, data embedded)
 ```
 
-## 🖱️ One-click mode (Update button)
+## 👆 One-click mode (Update button)
 
 Double-click `start.bat` (or run `python fpl.py --serve --open`). It serves the page on localhost and shows an **Update data** button in the corner: one click runs the same update flow and reloads the page, so you never need an editor or terminal. The server binds to 127.0.0.1 only and the page works read-only if opened directly as a file (the button only appears when served). The Model tab's "Use", "Save my sliders", auto-pick switch and "Pick best now" also need it.
 
